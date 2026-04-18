@@ -7,8 +7,10 @@
  *   第二部分：首页结构重构实现
  */
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { SectionHeading } from "@/components/shared/section-heading";
+import { buildPageMetadata } from "@/lib/seo";
 import {
   businessEntryCards,
   contentFlowSections,
@@ -18,6 +20,14 @@ import {
   platformEntryCards,
   trustEntryCards,
 } from "@/lib/demo-data";
+
+export const metadata: Metadata = buildPageMetadata({
+  title: "中国睡眠产业知识入口与行业参考平台",
+  description:
+    "覆盖睡眠知识、品牌、榜单、指数与标准体系，服务中国睡眠产业的知识入口、信任入口与商业入口。",
+  path: "/",
+  keywords: ["睡眠知识", "睡眠品牌", "睡眠产业", "睡眠标准", "中眠榜"],
+});
 
 export default function HomePage() {
   const platformEntryGroups = [

@@ -1,9 +1,9 @@
 /**
  * 文件说明：该文件实现中眠网前台栏目页所需的服务端列表查询能力。
- * 功能说明：统一封装 /knowledge、/terms、/brands 三条主线路的已发布列表查询、最小搜索与空态兜底。
+ * 功能说明：统一封装 /knowledge、/terms、/brands 三条主线路的已发布列表查询、最小搜索、分类筛选、标签筛选与分页。
  *
  * 结构概览：
- *   第一部分：共享类型与数据库兜底
+ *   第一部分：共享类型、分页结构与数据库兜底
  *   第二部分：知识内容列表查询
  *   第三部分：词条列表查询
  *   第四部分：品牌列表查询
@@ -15,6 +15,7 @@ import {
   CategoryScope,
   ContentType,
   WorkflowStatus,
+  type Prisma,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
@@ -31,7 +32,17 @@ type TaxonomyItem = {
 
 type QueryInput = {
   q?: string;
+  category?: string;
+  tag?: string;
+  page?: string | number;
   take?: number;
+};
+
+type PaginationState = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };
 
 export type KnowledgeListItem = {
@@ -54,6 +65,7 @@ export type TermListItem = {
   definition: string;
   updatedAt: Date;
   categories: TaxonomyItem[];
+  tags: TaxonomyItem[];
 };
 
 export type BrandListItem = {
@@ -66,6 +78,7 @@ export type BrandListItem = {
   city: string | null;
   updatedAt: Date;
   categories: TaxonomyItem[];
+  tags: TaxonomyItem[];
 };
 
 export type ListCategoryCount = {
@@ -75,24 +88,41 @@ export type ListCategoryCount = {
   count: number;
 };
 
+export type ListTagCount = {
+  id: string;
+  name: string;
+  slug: string;
+  count: number;
+};
+
 export type KnowledgeListData = {
   items: KnowledgeListItem[];
+  categories: ListCategoryCount[];
+  tags: ListTagCount[];
   query: string;
-  limit: number;
+  activeCategory: string;
+  activeTag: string;
+  pagination: PaginationState;
 };
 
 export type TermsListData = {
   items: TermListItem[];
   categories: ListCategoryCount[];
+  tags: ListTagCount[];
   query: string;
-  limit: number;
+  activeCategory: string;
+  activeTag: string;
+  pagination: PaginationState;
 };
 
 export type BrandsListData = {
   items: BrandListItem[];
   categories: ListCategoryCount[];
+  tags: ListTagCount[];
   query: string;
-  limit: number;
+  activeCategory: string;
+  activeTag: string;
+  pagination: PaginationState;
 };
 
 const knowledgeTypes: ContentType[] = [
@@ -139,6 +169,16 @@ function normalizeQuery(input?: string) {
   return input?.trim() ?? "";
 }
 
+function normalizePage(input?: string | number) {
+  const page = Number(input);
+
+  if (!Number.isFinite(page) || page < 1) {
+    return 1;
+  }
+
+  return Math.floor(page);
+}
+
 function buildContains(input: string) {
   return {
     contains: input,
@@ -146,35 +186,232 @@ function buildContains(input: string) {
   };
 }
 
+function buildPagination(total: number, page: number, pageSize: number): PaginationState {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const safePage = Math.min(page, totalPages);
+
+  return {
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+  };
+}
+
+function buildKnowledgeWhere(input: {
+  query: string;
+  category: string;
+  tag: string;
+}): Prisma.ContentWhereInput {
+  return {
+    workflowStatus: WorkflowStatus.PUBLISHED,
+    contentType: {
+      in: knowledgeTypes,
+    },
+    ...(input.query
+      ? {
+          OR: [
+            { title: buildContains(input.query) },
+            { slug: buildContains(input.query) },
+            { summary: buildContains(input.query) },
+          ],
+        }
+      : {}),
+    ...(input.category
+      ? {
+          categories: {
+            some: {
+              slug: input.category,
+            },
+          },
+        }
+      : {}),
+    ...(input.tag
+      ? {
+          tags: {
+            some: {
+              slug: input.tag,
+            },
+          },
+        }
+      : {}),
+  };
+}
+
+function buildTermWhere(input: {
+  query: string;
+  category: string;
+  tag: string;
+}): Prisma.TermWhereInput {
+  return {
+    workflowStatus: WorkflowStatus.PUBLISHED,
+    ...(input.query
+      ? {
+          OR: [
+            { name: buildContains(input.query) },
+            { slug: buildContains(input.query) },
+            { shortDefinition: buildContains(input.query) },
+            { definition: buildContains(input.query) },
+          ],
+        }
+      : {}),
+    ...(input.category
+      ? {
+          categories: {
+            some: {
+              slug: input.category,
+            },
+          },
+        }
+      : {}),
+    ...(input.tag
+      ? {
+          tags: {
+            some: {
+              slug: input.tag,
+            },
+          },
+        }
+      : {}),
+  };
+}
+
+function buildBrandWhere(input: {
+  query: string;
+  category: string;
+  tag: string;
+}): Prisma.BrandWhereInput {
+  return {
+    workflowStatus: WorkflowStatus.PUBLISHED,
+    ...(input.query
+      ? {
+          OR: [
+            { name: buildContains(input.query) },
+            { slug: buildContains(input.query) },
+            { summary: buildContains(input.query) },
+            { tagline: buildContains(input.query) },
+            { region: buildContains(input.query) },
+            { city: buildContains(input.query) },
+          ],
+        }
+      : {}),
+    ...(input.category
+      ? {
+          categories: {
+            some: {
+              slug: input.category,
+            },
+          },
+        }
+      : {}),
+    ...(input.tag
+      ? {
+          tags: {
+            some: {
+              slug: input.tag,
+            },
+          },
+        }
+      : {}),
+  };
+}
+
 export async function getPublishedKnowledgeList(input: QueryInput) {
   const query = normalizeQuery(input.q);
-  const limit = input.take ?? 9;
+  const activeCategory = normalizeQuery(input.category);
+  const activeTag = normalizeQuery(input.tag);
+  const pageSize = input.take ?? 9;
+  const requestedPage = normalizePage(input.page);
 
   return safeQuery<KnowledgeListData>(
     {
       items: [],
+      categories: [],
+      tags: [],
       query,
-      limit,
+      activeCategory,
+      activeTag,
+      pagination: buildPagination(0, 1, pageSize),
     },
     async () => {
-      const items = await prisma.content.findMany({
-        where: {
-          workflowStatus: WorkflowStatus.PUBLISHED,
-          contentType: {
-            in: knowledgeTypes,
+      const where = buildKnowledgeWhere({
+        query,
+        category: activeCategory,
+        tag: activeTag,
+      });
+
+      const [total, categories, tags] = await Promise.all([
+        prisma.content.count({ where }),
+        prisma.category.findMany({
+          where: {
+            scope: CategoryScope.CONTENT,
+            contents: {
+              some: {
+                workflowStatus: WorkflowStatus.PUBLISHED,
+                contentType: {
+                  in: knowledgeTypes,
+                },
+              },
+            },
           },
-          ...(query
-            ? {
-                OR: [
-                  { title: buildContains(query) },
-                  { slug: buildContains(query) },
-                  { summary: buildContains(query) },
-                ],
-              }
-            : {}),
-        },
+          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            _count: {
+              select: {
+                contents: {
+                  where: {
+                    workflowStatus: WorkflowStatus.PUBLISHED,
+                    contentType: {
+                      in: knowledgeTypes,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        prisma.tag.findMany({
+          where: {
+            contents: {
+              some: {
+                workflowStatus: WorkflowStatus.PUBLISHED,
+                contentType: {
+                  in: knowledgeTypes,
+                },
+              },
+            },
+          },
+          orderBy: { name: "asc" },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            _count: {
+              select: {
+                contents: {
+                  where: {
+                    workflowStatus: WorkflowStatus.PUBLISHED,
+                    contentType: {
+                      in: knowledgeTypes,
+                    },
+                  },
+                },
+              },
+            },
+          },
+          take: 12,
+        }),
+      ]);
+
+      const pagination = buildPagination(total, requestedPage, pageSize);
+      const items = await prisma.content.findMany({
+        where,
         orderBy: [{ publishedAt: "desc" }, { updatedAt: "desc" }],
-        take: limit,
+        skip: (pagination.page - 1) * pagination.pageSize,
+        take: pagination.pageSize,
         select: {
           id: true,
           title: true,
@@ -200,8 +437,22 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
 
       return {
         items,
+        categories: categories.map((category) => ({
+          id: category.id,
+          name: category.name,
+          slug: category.slug,
+          count: category._count.contents,
+        })),
+        tags: tags.map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          slug: tag.slug,
+          count: tag._count.contents,
+        })),
         query,
-        limit,
+        activeCategory,
+        activeTag,
+        pagination,
       };
     },
   );
@@ -209,48 +460,30 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
 
 export async function getPublishedTermsList(input: QueryInput) {
   const query = normalizeQuery(input.q);
-  const limit = input.take ?? 12;
+  const activeCategory = normalizeQuery(input.category);
+  const activeTag = normalizeQuery(input.tag);
+  const pageSize = input.take ?? 12;
+  const requestedPage = normalizePage(input.page);
 
   return safeQuery<TermsListData>(
     {
       items: [],
       categories: [],
+      tags: [],
       query,
-      limit,
+      activeCategory,
+      activeTag,
+      pagination: buildPagination(0, 1, pageSize),
     },
     async () => {
-      const [items, categories] = await Promise.all([
-        prisma.term.findMany({
-          where: {
-            workflowStatus: WorkflowStatus.PUBLISHED,
-            ...(query
-              ? {
-                  OR: [
-                    { name: buildContains(query) },
-                    { slug: buildContains(query) },
-                    { shortDefinition: buildContains(query) },
-                    { definition: buildContains(query) },
-                  ],
-                }
-              : {}),
-          },
-          orderBy: [{ isFeatured: "desc" }, { updatedAt: "desc" }],
-          take: limit,
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            shortDefinition: true,
-            definition: true,
-            updatedAt: true,
-            categories: {
-              select: {
-                name: true,
-                slug: true,
-              },
-            },
-          },
-        }),
+      const where = buildTermWhere({
+        query,
+        category: activeCategory,
+        tag: activeTag,
+      });
+
+      const [total, categories, tags] = await Promise.all([
+        prisma.term.count({ where }),
         prisma.category.findMany({
           where: {
             scope: CategoryScope.TERM,
@@ -276,7 +509,60 @@ export async function getPublishedTermsList(input: QueryInput) {
             },
           },
         }),
+        prisma.tag.findMany({
+          where: {
+            terms: {
+              some: {
+                workflowStatus: WorkflowStatus.PUBLISHED,
+              },
+            },
+          },
+          orderBy: { name: "asc" },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            _count: {
+              select: {
+                terms: {
+                  where: {
+                    workflowStatus: WorkflowStatus.PUBLISHED,
+                  },
+                },
+              },
+            },
+          },
+          take: 12,
+        }),
       ]);
+
+      const pagination = buildPagination(total, requestedPage, pageSize);
+      const items = await prisma.term.findMany({
+        where,
+        orderBy: [{ isFeatured: "desc" }, { updatedAt: "desc" }],
+        skip: (pagination.page - 1) * pagination.pageSize,
+        take: pagination.pageSize,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          shortDefinition: true,
+          definition: true,
+          updatedAt: true,
+          categories: {
+            select: {
+              name: true,
+              slug: true,
+            },
+          },
+          tags: {
+            select: {
+              name: true,
+              slug: true,
+            },
+          },
+        },
+      });
 
       return {
         items,
@@ -286,8 +572,16 @@ export async function getPublishedTermsList(input: QueryInput) {
           slug: category.slug,
           count: category._count.terms,
         })),
+        tags: tags.map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          slug: tag.slug,
+          count: tag._count.terms,
+        })),
         query,
-        limit,
+        activeCategory,
+        activeTag,
+        pagination,
       };
     },
   );
@@ -295,52 +589,30 @@ export async function getPublishedTermsList(input: QueryInput) {
 
 export async function getPublishedBrandsList(input: QueryInput) {
   const query = normalizeQuery(input.q);
-  const limit = input.take ?? 9;
+  const activeCategory = normalizeQuery(input.category);
+  const activeTag = normalizeQuery(input.tag);
+  const pageSize = input.take ?? 9;
+  const requestedPage = normalizePage(input.page);
 
   return safeQuery<BrandsListData>(
     {
       items: [],
       categories: [],
+      tags: [],
       query,
-      limit,
+      activeCategory,
+      activeTag,
+      pagination: buildPagination(0, 1, pageSize),
     },
     async () => {
-      const [items, categories] = await Promise.all([
-        prisma.brand.findMany({
-          where: {
-            workflowStatus: WorkflowStatus.PUBLISHED,
-            ...(query
-              ? {
-                  OR: [
-                    { name: buildContains(query) },
-                    { slug: buildContains(query) },
-                    { summary: buildContains(query) },
-                    { tagline: buildContains(query) },
-                    { region: buildContains(query) },
-                    { city: buildContains(query) },
-                  ],
-                }
-              : {}),
-          },
-          orderBy: [{ isFeatured: "desc" }, { updatedAt: "desc" }],
-          take: limit,
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            tagline: true,
-            summary: true,
-            region: true,
-            city: true,
-            updatedAt: true,
-            categories: {
-              select: {
-                name: true,
-                slug: true,
-              },
-            },
-          },
-        }),
+      const where = buildBrandWhere({
+        query,
+        category: activeCategory,
+        tag: activeTag,
+      });
+
+      const [total, categories, tags] = await Promise.all([
+        prisma.brand.count({ where }),
         prisma.category.findMany({
           where: {
             scope: CategoryScope.BRAND,
@@ -366,7 +638,62 @@ export async function getPublishedBrandsList(input: QueryInput) {
             },
           },
         }),
+        prisma.tag.findMany({
+          where: {
+            brands: {
+              some: {
+                workflowStatus: WorkflowStatus.PUBLISHED,
+              },
+            },
+          },
+          orderBy: { name: "asc" },
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            _count: {
+              select: {
+                brands: {
+                  where: {
+                    workflowStatus: WorkflowStatus.PUBLISHED,
+                  },
+                },
+              },
+            },
+          },
+          take: 12,
+        }),
       ]);
+
+      const pagination = buildPagination(total, requestedPage, pageSize);
+      const items = await prisma.brand.findMany({
+        where,
+        orderBy: [{ isFeatured: "desc" }, { updatedAt: "desc" }],
+        skip: (pagination.page - 1) * pagination.pageSize,
+        take: pagination.pageSize,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          tagline: true,
+          summary: true,
+          region: true,
+          city: true,
+          updatedAt: true,
+          categories: {
+            select: {
+              name: true,
+              slug: true,
+            },
+          },
+          tags: {
+            select: {
+              name: true,
+              slug: true,
+            },
+          },
+        },
+      });
 
       return {
         items,
@@ -376,8 +703,16 @@ export async function getPublishedBrandsList(input: QueryInput) {
           slug: category.slug,
           count: category._count.brands,
         })),
+        tags: tags.map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          slug: tag.slug,
+          count: tag._count.brands,
+        })),
         query,
-        limit,
+        activeCategory,
+        activeTag,
+        pagination,
       };
     },
   );

@@ -7,7 +7,16 @@
  *   第二部分：页面实现
  */
 
+import type { Metadata } from "next";
 import { SectionHeading } from "@/components/shared/section-heading";
+import { buildPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = buildPageMetadata({
+  title: "关于中眠网",
+  description:
+    "了解中眠网作为中国睡眠产业基础知识入口、信任入口与商业入口的平台定位与一期建设方向。",
+  path: "/about",
+});
 
 export default function AboutPage() {
   return (

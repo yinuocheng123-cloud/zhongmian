@@ -7,7 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 # 项目补充说明
 
 - 当前项目：中眠网
-- 当前最新一期正式记录：`custom/notes/v0.10-site-list-pages-prisma.md`
+- 当前最新一期正式记录：`custom/notes/v0.11-front-list-filters-seo.md`
 - 每次任务开始前：
   - 先同步 GitHub 远程最新状态
   - 先阅读 `custom/notes/` 下最新正式记录及当前任务强相关记录

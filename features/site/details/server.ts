@@ -11,7 +11,7 @@
 
 import "server-only";
 
-import { WorkflowStatus } from "@prisma/client";
+import { WorkflowStatus, type Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 type DetailResult<T> = {
@@ -27,6 +27,12 @@ type TaxonomyItem = {
 
 type TaxonomyWithId = TaxonomyItem & {
   id: string;
+};
+
+type TagWithId = {
+  id: string;
+  name: string;
+  slug: string;
 };
 
 export type ContentDetail = {
@@ -160,6 +166,13 @@ function stripTaxonomyIds(items: TaxonomyWithId[]): TaxonomyItem[] {
   }));
 }
 
+function stripTagIds(items: TagWithId[]): TaxonomyItem[] {
+  return items.map((item) => ({
+    name: item.name,
+    slug: item.slug,
+  }));
+}
+
 export async function getPublishedContentDetail(slug: string) {
   return safeDetailQuery<ContentDetail>(async () => {
     const item = await prisma.content.findFirst({
@@ -223,7 +236,9 @@ export async function getPublishedContentDetail(slug: string) {
 
     const categoryIds = item.categories.map((category) => category.id);
     const tagIds = item.tags.map((tag) => tag.id);
-    const relatedClauses = [];
+    const termIds = item.relatedTerms.map((term) => term.id);
+    const brandIds = item.relatedBrands.map((brand) => brand.id);
+    const relatedClauses: Prisma.ContentWhereInput[] = [];
 
     if (categoryIds.length > 0) {
       relatedClauses.push({
@@ -245,6 +260,26 @@ export async function getPublishedContentDetail(slug: string) {
       });
     }
 
+    if (termIds.length > 0) {
+      relatedClauses.push({
+        relatedTerms: {
+          some: {
+            id: { in: termIds },
+          },
+        },
+      });
+    }
+
+    if (brandIds.length > 0) {
+      relatedClauses.push({
+        relatedBrands: {
+          some: {
+            id: { in: brandIds },
+          },
+        },
+      });
+    }
+
     const relatedContents =
       relatedClauses.length > 0
         ? await prisma.content.findMany({
@@ -253,7 +288,7 @@ export async function getPublishedContentDetail(slug: string) {
               workflowStatus: WorkflowStatus.PUBLISHED,
               OR: relatedClauses,
             },
-            orderBy: buildPublishedOrder(),
+            orderBy: [{ isFeatured: "desc" }, ...buildPublishedOrder()],
             take: 3,
             select: {
               id: true,
@@ -325,7 +360,8 @@ export async function getPublishedTermDetail(slug: string) {
 
     const categoryIds = item.categories.map((category) => category.id);
     const tagIds = item.tags.map((tag) => tag.id);
-    const relatedClauses = [];
+    const contentIds = item.contents.map((content) => content.id);
+    const relatedClauses: Prisma.TermWhereInput[] = [];
 
     if (categoryIds.length > 0) {
       relatedClauses.push({
@@ -342,6 +378,16 @@ export async function getPublishedTermDetail(slug: string) {
         tags: {
           some: {
             id: { in: tagIds },
+          },
+        },
+      });
+    }
+
+    if (contentIds.length > 0) {
+      relatedClauses.push({
+        contents: {
+          some: {
+            id: { in: contentIds },
           },
         },
       });
@@ -412,21 +458,9 @@ export async function getPublishedBrandDetail(slug: string) {
         },
         tags: {
           select: {
+            id: true,
             name: true,
             slug: true,
-          },
-        },
-        contents: {
-          where: {
-            workflowStatus: WorkflowStatus.PUBLISHED,
-          },
-          orderBy: buildPublishedOrder(),
-          take: 3,
-          select: {
-            id: true,
-            title: true,
-            slug: true,
-            summary: true,
           },
         },
       },
@@ -437,16 +471,17 @@ export async function getPublishedBrandDetail(slug: string) {
     }
 
     const categoryIds = item.categories.map((category) => category.id);
-    const relatedClauses = [];
+    const tagIds = item.tags.map((tag) => tag.id);
+    const relatedBrandClauses: Prisma.BrandWhereInput[] = [];
 
     if (item.region) {
-      relatedClauses.push({
+      relatedBrandClauses.push({
         region: item.region,
       });
     }
 
     if (categoryIds.length > 0) {
-      relatedClauses.push({
+      relatedBrandClauses.push({
         categories: {
           some: {
             id: { in: categoryIds },
@@ -455,13 +490,23 @@ export async function getPublishedBrandDetail(slug: string) {
       });
     }
 
+    if (tagIds.length > 0) {
+      relatedBrandClauses.push({
+        tags: {
+          some: {
+            id: { in: tagIds },
+          },
+        },
+      });
+    }
+
     const relatedBrands =
-      relatedClauses.length > 0
+      relatedBrandClauses.length > 0
         ? await prisma.brand.findMany({
             where: {
               id: { not: item.id },
               workflowStatus: WorkflowStatus.PUBLISHED,
-              OR: relatedClauses,
+              OR: relatedBrandClauses,
             },
             orderBy: [{ isFeatured: "desc" }, { updatedAt: "desc" }],
             take: 3,
@@ -475,11 +520,58 @@ export async function getPublishedBrandDetail(slug: string) {
           })
         : [];
 
+    const relatedBrandIds = relatedBrands.map((brand) => brand.id);
+    const relatedContentClauses: Prisma.ContentWhereInput[] = [
+      {
+        relatedBrands: {
+          some: {
+            id: item.id,
+          },
+        },
+      },
+    ];
+
+    if (tagIds.length > 0) {
+      relatedContentClauses.push({
+        tags: {
+          some: {
+            id: { in: tagIds },
+          },
+        },
+      });
+    }
+
+    if (relatedBrandIds.length > 0) {
+      relatedContentClauses.push({
+        relatedBrands: {
+          some: {
+            id: { in: relatedBrandIds },
+          },
+        },
+      });
+    }
+
+    const relatedContents = await prisma.content.findMany({
+      where: {
+        workflowStatus: WorkflowStatus.PUBLISHED,
+        OR: relatedContentClauses,
+      },
+      orderBy: [{ isFeatured: "desc" }, ...buildPublishedOrder()],
+      take: 3,
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        summary: true,
+      },
+    });
+
     return {
       ...item,
       categories: stripTaxonomyIds(item.categories),
+      tags: stripTagIds(item.tags),
       relatedBrands,
-      relatedContents: item.contents,
+      relatedContents,
     };
   });
 }
