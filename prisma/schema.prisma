@@ -1,0 +1,275 @@
+// 文件说明：该文件定义中眠网一期的数据模型底座。
+// 功能说明：围绕“统一内容实体底座 + 词条 / 品牌专项实体 + 轻量工作流 + AI 编辑部预留”建立 Prisma Schema。
+//
+// 结构概览：
+//   第一部分：客户端与数据源配置
+//   第二部分：枚举定义
+//   第三部分：核心内容与实体模型
+//   第四部分：工作流与版本、AI 任务模型
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ContentType {
+  ARTICLE
+  KNOWLEDGE
+  TOPIC
+  GUIDE
+  REPORT
+  THINK_TANK
+  STANDARD
+  RANKING
+  INDEX
+}
+
+enum WorkflowStatus {
+  DRAFT
+  PENDING_EDIT
+  PENDING_REVIEW
+  PUBLISHED
+  OFFLINE
+}
+
+enum WorkflowTargetType {
+  CONTENT
+  TERM
+  BRAND
+}
+
+enum CategoryScope {
+  GENERAL
+  CONTENT
+  TERM
+  BRAND
+  INDUSTRY
+}
+
+enum AiTaskType {
+  OUTLINE
+  FIRST_DRAFT
+  REWRITE
+  SEO_META
+  SUMMARY
+}
+
+enum AiTaskStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+model Content {
+  id             String         @id @default(cuid())
+  title          String
+  slug           String         @unique
+  contentType    ContentType
+  summary        String?
+  body           String?
+  bodyJson       Json?
+  coverImageUrl  String?
+  sourceName     String?
+  sourceUrl      String?
+  authorName     String?
+  seoTitle       String?
+  seoDescription String?
+  seoKeywords    String[]
+  workflowStatus WorkflowStatus @default(DRAFT)
+  isFeatured     Boolean        @default(false)
+  isTop          Boolean        @default(false)
+  publishedAt    DateTime?
+  scheduledAt    DateTime?
+  archivedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  categories    Category[]       @relation("ContentCategories")
+  tags          Tag[]            @relation("ContentTags")
+  relatedTerms  Term[]           @relation("ContentTerms")
+  relatedBrands Brand[]          @relation("ContentBrands")
+  workflows     Workflow[]
+  versions      ContentVersion[]
+  aiTasks       AiTask[]
+
+  @@index([contentType, workflowStatus, publishedAt])
+  @@index([isFeatured, publishedAt])
+  @@index([createdAt])
+}
+
+model Term {
+  id              String         @id @default(cuid())
+  name            String
+  slug            String         @unique
+  aliases         String[]
+  shortDefinition String?
+  definition      String
+  body            String?
+  bodyJson        Json?
+  seoTitle        String?
+  seoDescription  String?
+  seoKeywords     String[]
+  workflowStatus  WorkflowStatus @default(DRAFT)
+  isFeatured      Boolean        @default(false)
+  publishedAt     DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  categories Category[] @relation("TermCategories")
+  tags       Tag[]      @relation("TermTags")
+  contents   Content[]  @relation("ContentTerms")
+  workflows  Workflow[]
+  aiTasks    AiTask[]
+
+  @@index([workflowStatus, publishedAt])
+  @@index([createdAt])
+}
+
+model Brand {
+  id             String         @id @default(cuid())
+  name           String
+  slug           String         @unique
+  legalName      String?
+  tagline        String?
+  summary        String?
+  description    String?
+  website        String?
+  logoUrl        String?
+  region         String?
+  city           String?
+  contactName    String?
+  contactPhone   String?
+  contactEmail   String?
+  seoTitle       String?
+  seoDescription String?
+  seoKeywords    String[]
+  workflowStatus WorkflowStatus @default(DRAFT)
+  isFeatured     Boolean        @default(false)
+  isMember       Boolean        @default(false)
+  publishedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  categories Category[] @relation("BrandCategories")
+  tags       Tag[]      @relation("BrandTags")
+  contents   Content[]  @relation("ContentBrands")
+  workflows  Workflow[]
+  aiTasks    AiTask[]
+
+  @@index([workflowStatus, publishedAt])
+  @@index([isFeatured, publishedAt])
+  @@index([createdAt])
+}
+
+model Category {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  scope       CategoryScope @default(GENERAL)
+  description String?
+  sortOrder   Int           @default(0)
+  isActive    Boolean       @default(true)
+  parentId    String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+
+  contents Content[] @relation("ContentCategories")
+  terms    Term[]    @relation("TermCategories")
+  brands   Brand[]   @relation("BrandCategories")
+
+  @@index([scope, sortOrder])
+  @@index([parentId])
+}
+
+model Tag {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contents Content[] @relation("ContentTags")
+  terms    Term[]    @relation("TermTags")
+  brands   Brand[]   @relation("BrandTags")
+
+  @@unique([name])
+}
+
+model Workflow {
+  id         String             @id @default(cuid())
+  targetType WorkflowTargetType
+  fromStatus WorkflowStatus?
+  toStatus   WorkflowStatus
+  note       String?
+  actorName  String?
+  createdAt  DateTime           @default(now())
+
+  contentId String?
+  termId    String?
+  brandId   String?
+
+  content Content? @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  term    Term?    @relation(fields: [termId], references: [id], onDelete: Cascade)
+  brand   Brand?   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([targetType, toStatus, createdAt])
+  @@index([contentId, createdAt])
+  @@index([termId, createdAt])
+  @@index([brandId, createdAt])
+}
+
+model ContentVersion {
+  id               String   @id @default(cuid())
+  contentId        String
+  versionNumber    Int
+  titleSnapshot    String
+  summarySnapshot  String?
+  bodySnapshot     String?
+  bodyJsonSnapshot Json?
+  changeNote       String?
+  createdBy        String?
+  createdAt        DateTime @default(now())
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([contentId, versionNumber])
+  @@index([contentId, createdAt])
+}
+
+model AiTask {
+  id           String       @id @default(cuid())
+  taskType     AiTaskType
+  status       AiTaskStatus @default(PENDING)
+  modelName    String?
+  prompt       String?
+  inputPayload Json?
+  outputText   String?
+  outputJson   Json?
+  errorMessage String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  finishedAt   DateTime?
+
+  contentId String?
+  termId    String?
+  brandId   String?
+
+  content Content? @relation(fields: [contentId], references: [id], onDelete: Cascade)
+  term    Term?    @relation(fields: [termId], references: [id], onDelete: Cascade)
+  brand   Brand?   @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@index([taskType, status, createdAt])
+  @@index([contentId, createdAt])
+  @@index([termId, createdAt])
+  @@index([brandId, createdAt])
+}
