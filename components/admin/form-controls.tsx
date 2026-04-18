@@ -19,6 +19,11 @@ type FieldProps = {
   description?: string;
 };
 
+type SelectOption = {
+  label: string;
+  value: string;
+};
+
 function FieldShell({
   label,
   name,
@@ -84,6 +89,35 @@ export function AdminTextarea(props: FieldProps & { rows?: number }) {
         rows={props.rows ?? 5}
         className="rounded-2xl border border-line bg-white px-4 py-3 outline-none transition focus:border-brand"
       />
+    </FieldShell>
+  );
+}
+
+export function AdminSelect(
+  props: FieldProps & {
+    options: SelectOption[];
+  },
+) {
+  return (
+    <FieldShell
+      label={props.label}
+      name={props.name}
+      error={props.error}
+      required={props.required}
+      description={props.description}
+    >
+      <select
+        id={props.name}
+        name={props.name}
+        defaultValue={props.defaultValue}
+        className="h-11 rounded-2xl border border-line bg-white px-4 outline-none transition focus:border-brand"
+      >
+        {props.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </FieldShell>
   );
 }

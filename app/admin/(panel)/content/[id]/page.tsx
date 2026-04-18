@@ -8,6 +8,7 @@
  *   第三部分：编辑页实现
  */
 
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { ContentForm } from "@/components/admin/content-form";
@@ -163,9 +164,12 @@ export default async function AdminContentDetailPage({
                 result.data.aiTasks.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-line p-4">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-foreground">
+                      <Link
+                        href={`/admin/ai-editorial/${item.id}`}
+                        className="text-sm font-semibold text-foreground transition hover:text-brand"
+                      >
                         {item.taskType}
-                      </span>
+                      </Link>
                       <span className="text-xs text-muted">{item.status}</span>
                     </div>
                     <p className="mt-2 text-xs text-muted">
