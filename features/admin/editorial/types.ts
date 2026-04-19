@@ -58,6 +58,64 @@ export type PromptTemplateInput = {
   shouldCreateDraft: boolean;
 };
 
+export type AiGenerationProviderId = "placeholder-mock";
+
+export type AiGenerationRequest = {
+  taskType: AiTaskType;
+  template: PromptTemplateDefinition;
+  input: PromptTemplateInput;
+};
+
+export type AiGenerationMeta = {
+  providerId: AiGenerationProviderId;
+  providerName: string;
+  templateId: string;
+  templateName: string;
+  generatedAt: string;
+  isMock: boolean;
+};
+
+export type AiGenerationSuccess = {
+  status: "SUCCEEDED";
+  text: string;
+  excerpt: string;
+  prompt: string;
+  meta: AiGenerationMeta;
+  outputJson: {
+    schemaVersion: "v2";
+    meta: AiGenerationMeta;
+    input: PromptTemplateInput;
+    sections: Array<{
+      key: string;
+      title: string;
+      instruction: string;
+      content: string;
+    }>;
+  };
+};
+
+export type AiGenerationFailure = {
+  status: "FAILED";
+  text: "";
+  excerpt: "";
+  prompt: string;
+  meta: AiGenerationMeta;
+  errorMessage: string;
+  outputJson: {
+    schemaVersion: "v2";
+    meta: AiGenerationMeta;
+    errorMessage: string;
+  };
+};
+
+export type AiGenerationResult = AiGenerationSuccess | AiGenerationFailure;
+
+export type AiGenerationProvider = {
+  id: AiGenerationProviderId;
+  name: string;
+  generate: (request: AiGenerationRequest) => Promise<AiGenerationResult>;
+};
+
 export type StructuredAiTaskPayload = {
   schemaVersion: "v2";
   templateId: string;
@@ -144,6 +202,7 @@ export type AiTaskListItem = {
   templateId: string;
   templateName: string;
   targetKind: PromptTemplateTargetKind;
+  providerId: string | null;
   taskType: AiTaskType;
   status: AiTaskStatus;
   createdAt: Date;
@@ -160,6 +219,7 @@ export type AiTaskEditorData = {
   formValues: AiTaskFormValues;
   contentOptions: ContentOption[];
   templateOptions: PromptTemplateOption[];
+  providerId: string | null;
   createdAt: Date;
   updatedAt: Date;
   finishedAt: Date | null;

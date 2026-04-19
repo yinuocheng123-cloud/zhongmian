@@ -1,6 +1,6 @@
 /**
  * 文件说明：该文件实现 AI 编辑部任务编辑页。
- * 功能说明：展示 AI 任务表单、关联 Content 挂接状态和当前占位产出，帮助任务流与内容流转形成最小连接。
+ * 功能说明：展示 AI 任务表单、关联 Content 挂接状态、当前 provider 与生成结果，帮助任务流与内容流转形成最小连接。
  *
  * 结构概览：
  *   第一部分：导入依赖与参数工具
@@ -78,7 +78,7 @@ export default async function AdminAiEditorialDetailPage({
               编辑 AI 任务
             </h2>
             <p className="text-sm leading-7 text-muted">
-              这里负责 AI 编辑部的前段任务流：模板选择、结构化输入、占位稿生成和
+              这里负责 AI 编辑部的前段任务流：模板选择、结构化输入、provider 调用和
               Content 草稿挂接。正式发布仍由 Content 原有工作流负责。
             </p>
           </div>
@@ -137,6 +137,7 @@ export default async function AdminAiEditorialDetailPage({
           <div className="mt-5 space-y-4 text-sm leading-7 text-muted">
             <p>状态：{result.data.formValues.status ?? "待生成"}</p>
             <p>模板目标：{result.data.formValues.targetKind}</p>
+            <p>当前 Provider：{result.data.providerId ?? "未执行生成"}</p>
             <p>占位输出长度：{result.data.formValues.outputText.length} 字符</p>
             <p>创建时间：{formatDateTime(result.data.createdAt)}</p>
             <p>

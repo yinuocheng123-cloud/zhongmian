@@ -1,6 +1,6 @@
 /**
  * 文件说明：该文件实现 AI 编辑部任务列表页。
- * 功能说明：读取真实 AiTask 数据，展示任务标题、模板、类型、关联 Content、状态与时间字段，并提供最小搜索与状态筛选。
+ * 功能说明：读取真实 AiTask 数据，展示任务标题、模板、provider、类型、关联 Content、状态与时间字段，并提供最小搜索与状态筛选。
  *
  * 结构概览：
  *   第一部分：导入依赖与参数工具
@@ -43,7 +43,7 @@ export default async function AdminAiEditorialPage({
               AI 编辑部
             </h2>
             <p className="text-sm leading-7 text-muted">
-              当前优先打通选题任务、模板输入、结构化占位稿生成与 Content 草稿挂接，
+              当前优先打通选题任务、模板输入、provider 生成与 Content 草稿挂接，
               让 AI 编辑部真正成为内容生产链路的一部分。
             </p>
           </div>
@@ -62,7 +62,7 @@ export default async function AdminAiEditorialPage({
               type="text"
               name="q"
               defaultValue={q}
-              placeholder="按任务标题、模板、关联内容或占位输出搜索"
+              placeholder="按任务标题、模板、provider、关联内容或占位输出搜索"
               className="h-11 rounded-2xl border border-line bg-white px-4 outline-none transition focus:border-brand"
             />
           </label>
@@ -101,9 +101,9 @@ export default async function AdminAiEditorialPage({
       ) : null}
 
       <section className="overflow-hidden rounded-[28px] border border-line bg-white">
-        <div className="grid grid-cols-[1.4fr_1fr_1fr_0.8fr_0.8fr_0.8fr_0.6fr] gap-4 border-b border-line bg-surface-soft px-6 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+        <div className="grid grid-cols-[1.3fr_1.1fr_1fr_0.8fr_0.8fr_0.8fr_0.6fr] gap-4 border-b border-line bg-surface-soft px-6 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
           <span>任务标题</span>
-          <span>模板 / 类型</span>
+          <span>模板 / Provider</span>
           <span>关联 Content</span>
           <span>当前状态</span>
           <span>创建时间</span>
@@ -116,7 +116,7 @@ export default async function AdminAiEditorialPage({
             {result.data.map((item) => (
               <div
                 key={item.id}
-                className="grid grid-cols-[1.4fr_1fr_1fr_0.8fr_0.8fr_0.8fr_0.6fr] gap-4 px-6 py-5 text-sm text-foreground"
+                className="grid grid-cols-[1.3fr_1.1fr_1fr_0.8fr_0.8fr_0.8fr_0.6fr] gap-4 px-6 py-5 text-sm text-foreground"
               >
                 <div className="min-w-0">
                   <p className="truncate font-medium">{item.title}</p>
@@ -124,6 +124,9 @@ export default async function AdminAiEditorialPage({
                 </div>
                 <div className="min-w-0">
                   <p className="truncate font-medium">{item.templateName}</p>
+                  <p className="mt-1 truncate text-xs text-muted">
+                    {item.providerId ?? "未记录 Provider"}
+                  </p>
                   <p className="mt-1 truncate text-xs text-muted">
                     {aiTaskTypeOptions.find((option) => option.value === item.taskType)
                       ?.label ?? item.taskType}

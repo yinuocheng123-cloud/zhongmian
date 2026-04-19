@@ -19,6 +19,16 @@ import type {
   PromptTemplateOption,
 } from "@/features/admin/editorial/types";
 
+export type RenderedPlaceholderOutput = {
+  text: string;
+  sections: Array<{
+    key: string;
+    title: string;
+    instruction: string;
+    content: string;
+  }>;
+};
+
 const templateDirectory = path.join(
   process.cwd(),
   "custom",
@@ -239,7 +249,7 @@ export function buildPromptFromTemplate(
 export function buildStructuredPlaceholderOutput(
   template: PromptTemplateDefinition,
   input: PromptTemplateInput,
-) {
+): RenderedPlaceholderOutput {
   const sections = template.outputSections.map((section) => ({
     key: section.key,
     title: section.title,
@@ -268,13 +278,6 @@ export function buildStructuredPlaceholderOutput(
 
   return {
     text,
-    json: {
-      schemaVersion: "v1",
-      templateId: template.id,
-      templateName: template.name,
-      targetKind: template.targetKind,
-      input,
-      sections,
-    },
+    sections,
   };
 }

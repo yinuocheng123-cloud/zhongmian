@@ -100,6 +100,12 @@ function buildAiTaskSearchFilter(q?: string): Prisma.AiTaskWhereInput {
           },
         },
       },
+      {
+        modelName: {
+          contains: query,
+          mode: "insensitive",
+        },
+      },
     ],
   };
 }
@@ -144,6 +150,7 @@ export async function getAiTaskList(query: AiTaskListQuery) {
           id: true,
           taskType: true,
           status: true,
+          modelName: true,
           createdAt: true,
           updatedAt: true,
           finishedAt: true,
@@ -167,6 +174,7 @@ export async function getAiTaskList(query: AiTaskListQuery) {
           templateId: payload.templateId,
           templateName: payload.templateName,
           targetKind: payload.targetKind,
+          providerId: item.modelName,
           taskType: item.taskType,
           status: item.status,
           createdAt: item.createdAt,
@@ -190,6 +198,7 @@ export async function getAiTaskEditorData(id: string) {
             id: true,
             taskType: true,
             status: true,
+            modelName: true,
             createdAt: true,
             updatedAt: true,
             finishedAt: true,
@@ -250,6 +259,7 @@ export async function getAiTaskEditorData(id: string) {
         },
         contentOptions: sharedOptions.contentOptions,
         templateOptions,
+        providerId: task.modelName,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
         finishedAt: task.finishedAt,

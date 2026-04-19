@@ -24,10 +24,12 @@ import {
   type AiEditorialIntent,
 } from "@/features/admin/editorial/constants";
 import {
-  buildPromptFromTemplate,
-  buildStructuredPlaceholderOutput,
   getPromptTemplateById,
 } from "@/features/admin/editorial/templates";
+import {
+  defaultAiGenerationProviderId,
+  executeAiGeneration,
+} from "@/features/admin/editorial/provider";
 import type {
   AiTaskFormState,
   PromptTemplateInput,
@@ -356,11 +358,32 @@ export async function saveAiTaskAction(
       notes,
       shouldCreateDraft,
     };
-    const taskPrompt = buildPromptFromTemplate(selectedTemplate, structuredInput);
-    const generatedOutput =
+    const generatedResult =
       intent === "GENERATE_PLACEHOLDER"
-        ? buildStructuredPlaceholderOutput(selectedTemplate, structuredInput)
+        ? await executeAiGeneration(
+            {
+              taskType,
+              template: selectedTemplate,
+              input: structuredInput,
+            },
+            defaultAiGenerationProviderId,
+          )
         : null;
+
+    if (generatedResult?.status === "FAILED") {
+      return {
+        status: "error",
+        message: generatedResult.errorMessage,
+      };
+    }
+
+    const taskPrompt =
+      generatedResult?.prompt ??
+      [
+        `模板：${selectedTemplate.name}`,
+        `目标实体：${selectedTemplate.targetKind}`,
+        `标题：${structuredInput.title}`,
+      ].join("\n");
 
     const savedTask = await prisma.$transaction(async (tx) => {
       const existing = taskId
@@ -385,7 +408,7 @@ export async function saveAiTaskAction(
               topic,
               contentType,
               shouldCreateDraft,
-              placeholderOutput: generatedOutput?.text ?? "",
+              placeholderOutput: generatedResult?.text ?? "",
               actorName,
             })
           : null;
@@ -408,7 +431,7 @@ export async function saveAiTaskAction(
         status: nextStatus,
         prompt: taskPrompt,
         inputPayload,
-        outputText: generatedOutput?.text ?? (outputText || null),
+        outputText: generatedResult?.text ?? (outputText || null),
         finishedAt:
           nextStatus === "SUCCEEDED"
             ? new Date()
@@ -417,8 +440,9 @@ export async function saveAiTaskAction(
               : existing?.finishedAt ?? null,
         modelName:
           intent === "GENERATE_PLACEHOLDER"
-            ? `placeholder-template:${selectedTemplate.id}`
+            ? generatedResult?.meta.providerId ?? defaultAiGenerationProviderId
             : existing?.modelName ?? null,
+        errorMessage: null,
         contentId: nextContentId,
       };
 
@@ -427,14 +451,14 @@ export async function saveAiTaskAction(
             where: { id: existing.id },
             data: {
               ...baseTaskData,
-              ...(generatedOutput ? { outputJson: generatedOutput.json } : {}),
+              ...(generatedResult ? { outputJson: generatedResult.outputJson } : {}),
             },
             select: { id: true, contentId: true },
           })
         : await tx.aiTask.create({
             data: {
               ...baseTaskData,
-              ...(generatedOutput ? { outputJson: generatedOutput.json } : {}),
+              ...(generatedResult ? { outputJson: generatedResult.outputJson } : {}),
             },
             select: { id: true, contentId: true },
           });
