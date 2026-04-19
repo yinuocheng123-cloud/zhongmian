@@ -29,6 +29,23 @@ type PageProps = {
   }>;
 };
 
+const brandSubColumns = [
+  {
+    title: "行业事件",
+    badge: "事件归纳",
+    summary:
+      "行业事件作为睡眠品牌的子栏目，归纳会议、展会、合作、发布与标准动作，服务品牌理解与行业参考，不做快讯流。",
+    points: ["会议与展会节点", "合作与发布动作", "行业重要事件归纳"],
+  },
+  {
+    title: "品牌进展",
+    badge: "结构更新",
+    summary:
+      "品牌进展作为睡眠品牌的子栏目，围绕品牌收录、主营调整、地区扩展与能力变化做结构化更新，不做企业新闻流。",
+    points: ["品牌收录更新", "主营方向变化", "地区与能力扩展"],
+  },
+] as const;
+
 export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
@@ -159,6 +176,42 @@ export default async function BrandsPage({ searchParams }: PageProps) {
               当前共有 {pagination.total} 个已发布品牌。
             </p>
           </div>
+        </div>
+      </section>
+
+      <section className="portal-card rounded-[32px] p-8">
+        <SectionHeading
+          eyebrow="品牌子栏目"
+          title="行业事件与品牌进展都归入睡眠品牌，按“归纳 + 更新”组织"
+          description="品牌栏目不做企业新闻集合，而是用行业事件沉淀行业节点，用品牌进展沉淀企业名录与能力结构变化。"
+        />
+        <div className="mt-8 grid gap-4 lg:grid-cols-2">
+          {brandSubColumns.map((item) => (
+            <div
+              key={item.title}
+              className="rounded-[28px] border border-line bg-surface-soft p-6"
+            >
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-brand">
+                  {item.badge}
+                </span>
+                <span className="text-sm font-semibold text-foreground">
+                  {item.title}
+                </span>
+              </div>
+              <p className="mt-4 text-sm leading-7 text-muted">{item.summary}</p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                {item.points.map((point) => (
+                  <span
+                    key={point}
+                    className="rounded-full border border-dashed border-line px-4 py-2 text-sm text-muted"
+                  >
+                    {point}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 

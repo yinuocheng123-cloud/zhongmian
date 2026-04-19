@@ -173,11 +173,27 @@ function stripTagIds(items: TagWithId[]): TaxonomyItem[] {
   }));
 }
 
+function normalizeDetailSlug(slug: string) {
+  const trimmedSlug = slug.trim();
+
+  if (!trimmedSlug) {
+    return trimmedSlug;
+  }
+
+  try {
+    return decodeURIComponent(trimmedSlug);
+  } catch {
+    // 避免异常 slug 直接打断详情查询；解码失败时回退原值，仍交给查询层判断是否存在。
+    return trimmedSlug;
+  }
+}
+
 export async function getPublishedContentDetail(slug: string) {
   return safeDetailQuery<ContentDetail>(async () => {
+    const normalizedSlug = normalizeDetailSlug(slug);
     const item = await prisma.content.findFirst({
       where: {
-        slug,
+        slug: normalizedSlug,
         workflowStatus: WorkflowStatus.PUBLISHED,
       },
       select: {
@@ -311,9 +327,10 @@ export async function getPublishedContentDetail(slug: string) {
 
 export async function getPublishedTermDetail(slug: string) {
   return safeDetailQuery<TermDetail>(async () => {
+    const normalizedSlug = normalizeDetailSlug(slug);
     const item = await prisma.term.findFirst({
       where: {
-        slug,
+        slug: normalizedSlug,
         workflowStatus: WorkflowStatus.PUBLISHED,
       },
       select: {
@@ -431,9 +448,10 @@ export async function getPublishedTermDetail(slug: string) {
 
 export async function getPublishedBrandDetail(slug: string) {
   return safeDetailQuery<BrandDetail>(async () => {
+    const normalizedSlug = normalizeDetailSlug(slug);
     const item = await prisma.brand.findFirst({
       where: {
-        slug,
+        slug: normalizedSlug,
         workflowStatus: WorkflowStatus.PUBLISHED,
       },
       select: {

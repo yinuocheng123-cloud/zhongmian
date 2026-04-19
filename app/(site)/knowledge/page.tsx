@@ -31,6 +31,13 @@ type PageProps = {
 
 const problemEntries = ["失眠", "打呼噜", "深度睡眠", "夜醒", "儿童睡眠", "作息紊乱"] as const;
 const populationEntries = ["儿童", "上班族", "老年人", "孕产人群", "长期熬夜人群"] as const;
+const industryTrendLane = {
+  title: "行业趋势",
+  badge: "趋势解释",
+  summary:
+    "行业趋势作为睡眠知识的子栏目，用来解释睡眠产业中的长期变化、方法变化与结构变化，不承接逐条新闻快讯。",
+  points: ["解释长期变化", "归纳技术与方法演进", "连接知识判断与行业理解"],
+} as const;
 
 export async function generateMetadata({
   searchParams,
@@ -195,6 +202,39 @@ export default async function KnowledgePage({ searchParams }: PageProps) {
               {item}
             </span>
           ))}
+        </div>
+      </section>
+
+      <section className="portal-card rounded-[32px] p-8">
+        <SectionHeading
+          eyebrow="知识子栏目"
+          title="行业趋势放在睡眠知识里，按“趋势解释”组织内容"
+          description="这里不是行业新闻流，而是把政策变化、技术演进、消费方向与诊疗方法变化解释清楚，作为知识入口的一部分。"
+        />
+        <div className="mt-8">
+          <div className="rounded-[28px] border border-line bg-surface-soft p-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-brand">
+                {industryTrendLane.badge}
+              </span>
+              <span className="text-sm font-semibold text-foreground">
+                {industryTrendLane.title}
+              </span>
+            </div>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-muted">
+              {industryTrendLane.summary}
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              {industryTrendLane.points.map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full border border-dashed border-line px-4 py-2 text-sm text-muted"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
