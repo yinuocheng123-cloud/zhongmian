@@ -1,24 +1,29 @@
 /**
  * 文件说明：该文件实现 AI 编辑部模块所需的服务端数据读取能力。
- * 功能说明：统一提供 AI 任务列表、编辑页数据、内容候选项和数据库不可用兜底。
+ * 功能说明：统一提供 AI 任务列表、编辑页数据、可关联内容候选项与模板候选项，并在数据库不可用时给出稳定兜底。
  *
  * 结构概览：
- *   第一部分：结果类型与兜底工具
- *   第二部分：列表查询
- *   第三部分：编辑页查询
+ *   第一部分：结果包装与查询兜底
+ *   第二部分：AI 任务列表查询
+ *   第三部分：AI 任务创建 / 编辑页查询
  */
 
 import "server-only";
 
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getPromptTemplateOptions } from "@/features/admin/editorial/templates";
 import type {
   AiTaskEditorData,
   AiTaskListItem,
   AiTaskListQuery,
   ContentOption,
+  PromptTemplateOption,
 } from "@/features/admin/editorial/types";
-import { parseAiTaskPayload } from "@/features/admin/editorial/utils";
+import {
+  formatKeywordsInput,
+  parseAiTaskPayload,
+} from "@/features/admin/editorial/utils";
 import { getErrorMessage } from "@/features/admin/resources/utils";
 
 type DataResult<T> = {
@@ -27,12 +32,17 @@ type DataResult<T> = {
   databaseReady: boolean;
 };
 
+type AiTaskCreationOptions = {
+  contentOptions: ContentOption[];
+  templateOptions: PromptTemplateOption[];
+};
+
 function getDatabaseUnavailableMessage() {
   if (!process.env.DATABASE_URL) {
     return "未检测到 DATABASE_URL，当前 AI 编辑部页面会以只读骨架方式显示。";
   }
 
-  return "数据库暂时不可用，当前 AI 编辑部页面仅展示结构和兜底提示。";
+  return "数据库暂时不可用，当前 AI 编辑部页面仅展示结构与兜底提示。";
 }
 
 async function safeQuery<T>(
@@ -94,6 +104,33 @@ function buildAiTaskSearchFilter(q?: string): Prisma.AiTaskWhereInput {
   };
 }
 
+async function getContentOptions(): Promise<ContentOption[]> {
+  const items = await prisma.content.findMany({
+    orderBy: { updatedAt: "desc" },
+    take: 30,
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      workflowStatus: true,
+    },
+  });
+
+  return items;
+}
+
+async function getSharedCreationOptions(): Promise<AiTaskCreationOptions> {
+  const [contentOptions, templateOptions] = await Promise.all([
+    getContentOptions(),
+    getPromptTemplateOptions(),
+  ]);
+
+  return {
+    contentOptions,
+    templateOptions,
+  };
+}
+
 export async function getAiTaskList(query: AiTaskListQuery) {
   return safeQuery<AiTaskListItem[]>(
     async () => {
@@ -126,7 +163,10 @@ export async function getAiTaskList(query: AiTaskListQuery) {
 
         return {
           id: item.id,
-          title: payload.title || "未命名任务",
+          title: payload.input.title || "未命名任务",
+          templateId: payload.templateId,
+          templateName: payload.templateName,
+          targetKind: payload.targetKind,
           taskType: item.taskType,
           status: item.status,
           createdAt: item.createdAt,
@@ -140,25 +180,10 @@ export async function getAiTaskList(query: AiTaskListQuery) {
   );
 }
 
-async function getContentOptions(): Promise<ContentOption[]> {
-  const items = await prisma.content.findMany({
-    orderBy: { updatedAt: "desc" },
-    take: 30,
-    select: {
-      id: true,
-      title: true,
-      slug: true,
-      workflowStatus: true,
-    },
-  });
-
-  return items;
-}
-
 export async function getAiTaskEditorData(id: string) {
   return safeQuery<AiTaskEditorData | null>(
     async () => {
-      const [task, contentOptions] = await Promise.all([
+      const [task, sharedOptions] = await Promise.all([
         prisma.aiTask.findUnique({
           where: { id },
           select: {
@@ -180,7 +205,7 @@ export async function getAiTaskEditorData(id: string) {
             },
           },
         }),
-        getContentOptions(),
+        getSharedCreationOptions(),
       ]);
 
       if (!task) {
@@ -188,21 +213,43 @@ export async function getAiTaskEditorData(id: string) {
       }
 
       const payload = parseAiTaskPayload(task.inputPayload);
+      const templateOptions = sharedOptions.templateOptions.some(
+        (item) => item.id === payload.templateId,
+      )
+        ? sharedOptions.templateOptions
+        : [
+            {
+              id: payload.templateId,
+              name: payload.templateName,
+              description: "历史任务输入结构，保存后会升级为当前模板层格式。",
+              targetKind: payload.targetKind,
+              defaultTaskType: task.taskType,
+              supportedTaskTypes: [task.taskType],
+              supportedContentTypes: [payload.input.contentType],
+              generationGoals: [payload.input.generationGoal],
+            },
+            ...sharedOptions.templateOptions,
+          ];
 
       return {
         formValues: {
           id: task.id,
-          title: payload.title,
+          title: payload.input.title,
+          templateId: payload.templateId,
           taskType: task.taskType,
-          direction: payload.direction,
-          notes: payload.notes,
-          shouldCreateDraft: payload.shouldCreateDraft,
-          desiredContentType: payload.desiredContentType,
+          topic: payload.input.topic,
+          keywords: formatKeywordsInput(payload.input.keywords),
+          contentType: payload.input.contentType,
+          generationGoal: payload.input.generationGoal,
+          notes: payload.input.notes,
+          shouldCreateDraft: payload.input.shouldCreateDraft,
           contentId: task.content?.id ?? "",
+          targetKind: payload.targetKind,
           status: task.status,
           outputText: task.outputText ?? "",
         },
-        contentOptions,
+        contentOptions: sharedOptions.contentOptions,
+        templateOptions,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
         finishedAt: task.finishedAt,
@@ -214,5 +261,35 @@ export async function getAiTaskEditorData(id: string) {
 }
 
 export async function getAiTaskCreationOptions() {
-  return safeQuery<ContentOption[]>(() => getContentOptions(), []);
+  const templateOptions = await getPromptTemplateOptions();
+
+  if (!process.env.DATABASE_URL) {
+    return {
+      data: {
+        contentOptions: [],
+        templateOptions,
+      },
+      error: getDatabaseUnavailableMessage(),
+      databaseReady: false,
+    };
+  }
+
+  try {
+    return {
+      data: {
+        contentOptions: await getContentOptions(),
+        templateOptions,
+      },
+      databaseReady: true,
+    };
+  } catch (error) {
+    return {
+      data: {
+        contentOptions: [],
+        templateOptions,
+      },
+      error: getErrorMessage(error),
+      databaseReady: false,
+    };
+  }
 }

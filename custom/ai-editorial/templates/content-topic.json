@@ -1,0 +1,32 @@
+{
+  "id": "content-topic",
+  "name": "专题策划模板",
+  "description": "面向专题、智库、报告类内容的结构化模板，适合行业综述和专题梳理。",
+  "targetKind": "CONTENT",
+  "defaultTaskType": "OUTLINE",
+  "supportedTaskTypes": ["OUTLINE", "FIRST_DRAFT", "REWRITE"],
+  "supportedContentTypes": ["TOPIC", "REPORT", "THINK_TANK"],
+  "generationGoals": ["专题梳理", "行业综述", "趋势观察"],
+  "promptRules": [
+    "优先给出专题范围和边界，避免内容过散。",
+    "突出信息组织结构，而不是单篇文章写法。",
+    "为后续人工补充数据、案例和来源留出位置。"
+  ],
+  "outputSections": [
+    {
+      "key": "scope",
+      "title": "专题范围",
+      "instruction": "明确专题覆盖的问题边界和核心对象。"
+    },
+    {
+      "key": "angles",
+      "title": "核心角度",
+      "instruction": "列出专题最值得展开的观察维度。"
+    },
+    {
+      "key": "draft",
+      "title": "结构化占位稿",
+      "instruction": "给出可扩展的章节骨架和占位正文。"
+    }
+  ]
+}

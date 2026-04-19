@@ -1,6 +1,6 @@
 /**
  * 文件说明：该文件实现 AI 编辑部任务新建页。
- * 功能说明：承载选题类任务和占位生成任务的最小真实录入表单，并在数据库未就绪时给出明确提示。
+ * 功能说明：承载选题类任务和结构化占位生成任务的最小真实录入表单，并在数据库未就绪时给出清晰提示。
  *
  * 结构概览：
  *   第一部分：导入依赖
@@ -9,9 +9,7 @@
 
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { AiTaskForm } from "@/components/admin/ai-task-form";
-import {
-  emptyAiTaskFormValues,
-} from "@/features/admin/editorial/types";
+import { emptyAiTaskFormValues } from "@/features/admin/editorial/types";
 import { getAiTaskCreationOptions } from "@/features/admin/editorial/server";
 
 export default async function AdminAiEditorialNewPage() {
@@ -25,7 +23,7 @@ export default async function AdminAiEditorialNewPage() {
           title="当前为无数据库演示状态"
           description={
             result.error ??
-            "表单结构和任务流已经接好，但如果未配置 DATABASE_URL，点击保存时会收到明确错误提示。"
+            "表单结构和任务流已接好，但如果未配置 DATABASE_URL，点击保存时会收到明确错误提示。"
           }
         />
       ) : null}
@@ -36,12 +34,14 @@ export default async function AdminAiEditorialNewPage() {
             新建 AI 编辑部任务
           </h2>
           <p className="text-sm leading-7 text-muted">
-            当前优先支持“选题、占位稿生成和 Content 草稿挂接”的最小闭环，不接真实模型，先把编辑部任务接入内容生产流程。
+            当前优先支持“模板选择、结构化输入、占位稿生成和 Content 草稿挂接”的最小闭环，
+            不接真实模型，先把编辑部任务正式纳入内容生产流程。
           </p>
         </div>
         <AiTaskForm
           initialValues={emptyAiTaskFormValues}
-          contentOptions={result.data}
+          contentOptions={result.data.contentOptions}
+          templateOptions={result.data.templateOptions}
         />
       </section>
     </div>

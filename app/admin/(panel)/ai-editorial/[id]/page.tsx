@@ -13,10 +13,8 @@ import { AdminNotice } from "@/components/admin/admin-notice";
 import { AiTaskForm } from "@/components/admin/ai-task-form";
 import { AiTaskStatusBadge } from "@/components/admin/ai-task-status-badge";
 import { getAiTaskEditorData } from "@/features/admin/editorial/server";
+import { workflowStatusLabels } from "@/features/admin/resources/constants";
 import { formatDateTime } from "@/features/admin/resources/utils";
-import {
-  workflowStatusLabels,
-} from "@/features/admin/resources/constants";
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -80,8 +78,8 @@ export default async function AdminAiEditorialDetailPage({
               编辑 AI 任务
             </h2>
             <p className="text-sm leading-7 text-muted">
-              这里负责 AI 编辑部的前段任务流：选题、占位稿生成和 Content 草稿挂接。
-              正式发布仍由 Content 原有工作流负责。
+              这里负责 AI 编辑部的前段任务流：模板选择、结构化输入、占位稿生成和
+              Content 草稿挂接。正式发布仍由 Content 原有工作流负责。
             </p>
           </div>
           {result.data.formValues.status ? (
@@ -91,6 +89,7 @@ export default async function AdminAiEditorialDetailPage({
         <AiTaskForm
           initialValues={result.data.formValues}
           contentOptions={result.data.contentOptions}
+          templateOptions={result.data.templateOptions}
         />
       </section>
 
@@ -124,7 +123,8 @@ export default async function AdminAiEditorialDetailPage({
               </>
             ) : (
               <p>
-                当前任务尚未挂接 Content。勾选“自动创建草稿”后执行“生成占位稿”，即可把 AI 编辑部任务接入内容生产流。
+                当前任务尚未挂接 Content。对于 Content 模板，只要勾选“自动创建草稿”并执行“生成占位稿”，
+                就可以把 AI 编辑部任务接入内容生产流。
               </p>
             )}
           </div>
@@ -136,6 +136,7 @@ export default async function AdminAiEditorialDetailPage({
           </h3>
           <div className="mt-5 space-y-4 text-sm leading-7 text-muted">
             <p>状态：{result.data.formValues.status ?? "待生成"}</p>
+            <p>模板目标：{result.data.formValues.targetKind}</p>
             <p>占位输出长度：{result.data.formValues.outputText.length} 字符</p>
             <p>创建时间：{formatDateTime(result.data.createdAt)}</p>
             <p>

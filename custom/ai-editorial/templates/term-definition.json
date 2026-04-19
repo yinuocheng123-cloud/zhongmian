@@ -1,0 +1,32 @@
+{
+  "id": "term-definition",
+  "name": "词条定义模板",
+  "description": "面向睡眠词条、术语和概念解释的结构化模板，适合定义、解释和概念差异说明。",
+  "targetKind": "TERM",
+  "defaultTaskType": "FIRST_DRAFT",
+  "supportedTaskTypes": ["FIRST_DRAFT", "REWRITE", "SUMMARY"],
+  "supportedContentTypes": ["KNOWLEDGE"],
+  "generationGoals": ["定义", "解释", "差异说明"],
+  "promptRules": [
+    "优先给出一句话定义，再展开解释。",
+    "强调概念边界与相关术语的区别。",
+    "避免写成资讯稿或泛泛文章。"
+  ],
+  "outputSections": [
+    {
+      "key": "definition",
+      "title": "一句话定义",
+      "instruction": "用简洁表达明确术语核心含义。"
+    },
+    {
+      "key": "explanation",
+      "title": "详细解释",
+      "instruction": "解释概念背景、适用场景和理解方式。"
+    },
+    {
+      "key": "related",
+      "title": "相关概念",
+      "instruction": "列出可继续扩展的相关词条和概念入口。"
+    }
+  ]
+}

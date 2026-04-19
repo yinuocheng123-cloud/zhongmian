@@ -1,0 +1,32 @@
+{
+  "id": "content-knowledge",
+  "name": "知识内容基础模板",
+  "description": "面向睡眠知识型内容的基础生成模板，适合科普、解释和知识梳理类稿件。",
+  "targetKind": "CONTENT",
+  "defaultTaskType": "FIRST_DRAFT",
+  "supportedTaskTypes": ["OUTLINE", "FIRST_DRAFT", "REWRITE", "SUMMARY"],
+  "supportedContentTypes": ["KNOWLEDGE", "ARTICLE", "GUIDE"],
+  "generationGoals": ["科普", "解释", "综述"],
+  "promptRules": [
+    "优先说明内容要解决的问题与目标人群。",
+    "结构要清晰，避免直接写成资讯稿。",
+    "保留待补充资料和待核实信息的位置。"
+  ],
+  "outputSections": [
+    {
+      "key": "positioning",
+      "title": "生成定位",
+      "instruction": "说明这篇内容服务什么问题、面向什么读者。"
+    },
+    {
+      "key": "outline",
+      "title": "结构提纲",
+      "instruction": "给出建议的小标题与内容顺序。"
+    },
+    {
+      "key": "draft",
+      "title": "占位初稿",
+      "instruction": "输出一版结构化占位内容，供人工继续编辑。"
+    }
+  ]
+}

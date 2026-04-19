@@ -1,67 +1,142 @@
 /**
  * 文件说明：该文件实现 AI 编辑部模块的通用工具函数。
- * 功能说明：统一解析任务输入载荷、构造占位内容和格式化标题，避免动作层堆积字符串处理细节。
+ * 功能说明：统一处理任务输入载荷的兼容解析、关键词字符串处理，以及旧版载荷向新版结构化输入的平滑过渡。
  *
  * 结构概览：
- *   第一部分：载荷解析工具
- *   第二部分：占位输出生成工具
+ *   第一部分：关键词解析工具
+ *   第二部分：任务载荷兼容解析
  */
 
-import type { Prisma } from "@prisma/client";
-import type { AiTaskPayload } from "@/features/admin/editorial/types";
+import type { ContentType, Prisma } from "@prisma/client";
+import type {
+  LegacyAiTaskPayload,
+  NormalizedAiTaskPayload,
+} from "@/features/admin/editorial/types";
 
-export function parseAiTaskPayload(payload: Prisma.JsonValue | null | undefined) {
-  const fallback: AiTaskPayload = {
+const fallbackPayload: NormalizedAiTaskPayload = {
+  templateId: "content-knowledge",
+  templateName: "睡眠知识科普稿",
+  targetKind: "CONTENT",
+  input: {
     title: "",
-    direction: "",
+    topic: "",
+    keywords: [],
+    contentType: "KNOWLEDGE",
+    generationGoal: "科普",
     notes: "",
     shouldCreateDraft: true,
-    desiredContentType: "KNOWLEDGE",
-  };
+  },
+};
 
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return fallback;
-  }
+function isContentType(value: unknown): value is ContentType {
+  return (
+    typeof value === "string" &&
+    [
+      "ARTICLE",
+      "KNOWLEDGE",
+      "TOPIC",
+      "GUIDE",
+      "REPORT",
+      "THINK_TANK",
+      "STANDARD",
+      "RANKING",
+      "INDEX",
+    ].includes(value)
+  );
+}
 
+function normalizeLegacyPayload(payload: LegacyAiTaskPayload): NormalizedAiTaskPayload {
   return {
-    title: typeof payload.title === "string" ? payload.title : fallback.title,
-    direction:
-      typeof payload.direction === "string" ? payload.direction : fallback.direction,
-    notes: typeof payload.notes === "string" ? payload.notes : fallback.notes,
-    shouldCreateDraft:
-      typeof payload.shouldCreateDraft === "boolean"
-        ? payload.shouldCreateDraft
-        : fallback.shouldCreateDraft,
-    desiredContentType:
-      typeof payload.desiredContentType === "string"
-        ? (payload.desiredContentType as AiTaskPayload["desiredContentType"])
-        : fallback.desiredContentType,
+    templateId: "legacy-freeform",
+    templateName: "旧版自由输入任务",
+    targetKind: "CONTENT",
+    input: {
+      title: payload.title,
+      topic: payload.direction,
+      keywords: [],
+      contentType: payload.desiredContentType,
+      generationGoal: "科普",
+      notes: payload.notes,
+      shouldCreateDraft: payload.shouldCreateDraft,
+    },
   };
 }
 
-export function buildPlaceholderOutput(input: {
-  title: string;
-  direction: string;
-  notes: string;
-}) {
-  const direction = input.direction.trim() || "待补充内容方向";
-  const notes = input.notes.trim() || "当前未补充额外资料备注。";
+export function parseKeywordsInput(value: string) {
+  return value
+    .split(/[\n,，、]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
 
-  return [
-    `# ${input.title}`,
-    "",
-    "## 选题方向",
-    direction,
-    "",
-    "## 占位初稿说明",
-    "当前内容由 AI 编辑部最小工作流生成占位稿，用于验证任务流与内容草稿挂接能力。",
-    "",
-    "## 资料备注",
-    notes,
-    "",
-    "## 下一步人工处理建议",
-    "1. 补充来源资料与证据。",
-    "2. 完善摘要与结构化小标题。",
-    "3. 进入内容审核与发布流转。",
-  ].join("\n");
+export function formatKeywordsInput(value: string[]) {
+  return value.join("、");
+}
+
+export function parseAiTaskPayload(
+  payload: Prisma.JsonValue | null | undefined,
+): NormalizedAiTaskPayload {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return fallbackPayload;
+  }
+
+  const record = payload as Record<string, unknown>;
+
+  if (record.schemaVersion === "v2") {
+    const input =
+      typeof record.input === "object" &&
+      record.input !== null &&
+      !Array.isArray(record.input)
+        ? (record.input as Record<string, unknown>)
+        : {};
+
+    return {
+      templateId:
+        typeof record.templateId === "string" && record.templateId.trim()
+          ? record.templateId
+          : fallbackPayload.templateId,
+      templateName:
+        typeof record.templateName === "string" && record.templateName.trim()
+          ? record.templateName
+          : fallbackPayload.templateName,
+      targetKind:
+        record.targetKind === "CONTENT" ||
+        record.targetKind === "TERM" ||
+        record.targetKind === "BRAND"
+          ? record.targetKind
+          : fallbackPayload.targetKind,
+      input: {
+        title: typeof input.title === "string" ? input.title : fallbackPayload.input.title,
+        topic: typeof input.topic === "string" ? input.topic : fallbackPayload.input.topic,
+        keywords: Array.isArray(input.keywords)
+          ? input.keywords.filter((item): item is string => typeof item === "string")
+          : fallbackPayload.input.keywords,
+        contentType: isContentType(input.contentType)
+          ? input.contentType
+          : fallbackPayload.input.contentType,
+        generationGoal:
+          typeof input.generationGoal === "string" && input.generationGoal.trim()
+            ? input.generationGoal
+            : fallbackPayload.input.generationGoal,
+        notes: typeof input.notes === "string" ? input.notes : fallbackPayload.input.notes,
+        shouldCreateDraft:
+          typeof input.shouldCreateDraft === "boolean"
+            ? input.shouldCreateDraft
+            : fallbackPayload.input.shouldCreateDraft,
+      },
+    };
+  }
+
+  return normalizeLegacyPayload({
+    title: typeof record.title === "string" ? record.title : "",
+    direction: typeof record.direction === "string" ? record.direction : "",
+    notes: typeof record.notes === "string" ? record.notes : "",
+    shouldCreateDraft:
+      typeof record.shouldCreateDraft === "boolean"
+        ? record.shouldCreateDraft
+        : true,
+    desiredContentType: isContentType(record.desiredContentType)
+      ? record.desiredContentType
+      : "KNOWLEDGE",
+  });
 }

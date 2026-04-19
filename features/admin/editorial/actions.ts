@@ -1,10 +1,10 @@
 /**
  * 文件说明：该文件实现 AI 编辑部模块的服务端提交动作。
- * 功能说明：统一处理 AI 任务的新建、编辑、状态切换、占位稿生成和与 Content 草稿的挂接。
+ * 功能说明：统一处理 AI 任务的新建、编辑、状态切换、模板驱动的占位生成，以及与 Content 草稿的最小挂接。
  *
  * 结构概览：
  *   第一部分：基础工具与校验
- *   第二部分：内容草稿挂接工具
+ *   第二部分：Content 草稿挂接工具
  *   第三部分：AI 任务保存与占位生成动作
  */
 
@@ -23,8 +23,16 @@ import {
   aiEditorialIntentLabels,
   type AiEditorialIntent,
 } from "@/features/admin/editorial/constants";
-import type { AiTaskFormState } from "@/features/admin/editorial/types";
-import { buildPlaceholderOutput } from "@/features/admin/editorial/utils";
+import {
+  buildPromptFromTemplate,
+  buildStructuredPlaceholderOutput,
+  getPromptTemplateById,
+} from "@/features/admin/editorial/templates";
+import type {
+  AiTaskFormState,
+  PromptTemplateInput,
+} from "@/features/admin/editorial/types";
+import { parseKeywordsInput } from "@/features/admin/editorial/utils";
 import { slugify, getErrorMessage } from "@/features/admin/resources/utils";
 import { prisma } from "@/lib/prisma";
 
@@ -173,8 +181,8 @@ async function resolveLinkedContent(
   params: {
     existingContentId?: string;
     title: string;
-    direction: string;
-    desiredContentType: ContentType;
+    topic: string;
+    contentType: ContentType;
     shouldCreateDraft: boolean;
     placeholderOutput: string;
     actorName: string;
@@ -197,7 +205,7 @@ async function resolveLinkedContent(
       throw new Error("选择的关联内容不存在。");
     }
 
-    const summary = existing.summary?.trim() || params.direction;
+    const summary = existing.summary?.trim() || params.topic;
     const body = existing.body?.trim() || params.placeholderOutput;
 
     const updated = await tx.content.update({
@@ -222,7 +230,7 @@ async function resolveLinkedContent(
       summary: updated.summary ?? "",
       body: updated.body ?? "",
       createdBy: params.actorName,
-      changeNote: "AI 编辑部挂接占位稿",
+      changeNote: "AI 编辑部挂接结构化占位稿",
     });
 
     return updated;
@@ -238,8 +246,8 @@ async function resolveLinkedContent(
     data: {
       title: params.title,
       slug,
-      contentType: params.desiredContentType,
-      summary: params.direction,
+      contentType: params.contentType,
+      summary: params.topic,
       body: params.placeholderOutput,
       workflowStatus: "DRAFT",
       seoKeywords: [],
@@ -268,7 +276,7 @@ async function resolveLinkedContent(
     summary: created.summary ?? "",
     body: created.body ?? "",
     createdBy: params.actorName,
-    changeNote: "AI 编辑部生成占位稿并创建草稿",
+    changeNote: "AI 编辑部生成结构化占位稿并创建草稿",
   });
 
   return created;
@@ -283,10 +291,13 @@ export async function saveAiTaskAction(
     ensureDatabaseReady();
 
     const title = getTrimmedValue(formData, "title");
-    const direction = getTrimmedValue(formData, "direction");
-    const notes = getTrimmedValue(formData, "notes");
+    const templateId = getTrimmedValue(formData, "templateId");
     const taskType = getTrimmedValue(formData, "taskType") as AiTaskType;
-    const desiredContentType = getTrimmedValue(formData, "desiredContentType") as ContentType;
+    const topic = getTrimmedValue(formData, "topic");
+    const keywords = parseKeywordsInput(getTrimmedValue(formData, "keywords"));
+    const contentType = getTrimmedValue(formData, "contentType") as ContentType;
+    const generationGoal = getTrimmedValue(formData, "generationGoal");
+    const notes = getTrimmedValue(formData, "notes");
     const contentId = getTrimmedValue(formData, "contentId");
     const outputText = getTrimmedValue(formData, "outputText");
     const shouldCreateDraft = formData.get("shouldCreateDraft") === "on";
@@ -295,19 +306,61 @@ export async function saveAiTaskAction(
     const fieldErrors: Record<string, string> = {};
 
     if (!title) fieldErrors.title = "任务标题不能为空。";
-    if (!direction) fieldErrors.direction = "请填写目标内容方向。";
-    if (!Object.values(ContentType).includes(desiredContentType)) {
-      fieldErrors.desiredContentType = "请选择合法的内容类型。";
+    if (!templateId) fieldErrors.templateId = "请选择一个提示词模板。";
+    if (!topic) fieldErrors.topic = "请填写生成主题。";
+    if (!generationGoal) fieldErrors.generationGoal = "请填写生成目标。";
+
+    if (!Object.values(ContentType).includes(contentType)) {
+      fieldErrors.contentType = "请选择合法的内容类型。";
     }
+
     if (!Object.values(AiTaskType).includes(taskType)) {
       fieldErrors.taskType = "请选择合法的任务类型。";
     }
 
-    if (Object.keys(fieldErrors).length > 0) {
+    const selectedTemplate = templateId
+      ? await getPromptTemplateById(templateId)
+      : null;
+
+    if (!selectedTemplate) {
+      fieldErrors.templateId = "所选模板不存在，请重新选择。";
+    } else {
+      if (!selectedTemplate.supportedTaskTypes.includes(taskType)) {
+        fieldErrors.taskType = "当前模板不支持所选任务类型。";
+      }
+
+      if (!selectedTemplate.supportedContentTypes.includes(contentType)) {
+        fieldErrors.contentType = "当前模板不支持所选内容类型。";
+      }
+
+      if (!selectedTemplate.generationGoals.includes(generationGoal)) {
+        fieldErrors.generationGoal = "当前模板不支持所选生成目标。";
+      }
+
+      if (selectedTemplate.targetKind !== "CONTENT" && contentId) {
+        fieldErrors.contentId = "当前模板目标不是 Content，不能挂接现有内容。";
+      }
+    }
+
+    if (Object.keys(fieldErrors).length > 0 || !selectedTemplate) {
       return buildFieldErrorState("请先修正 AI 任务表单中的必填项。", fieldErrors);
     }
 
     const actorName = getActorName();
+    const structuredInput: PromptTemplateInput = {
+      title,
+      topic,
+      keywords,
+      contentType,
+      generationGoal,
+      notes,
+      shouldCreateDraft,
+    };
+    const taskPrompt = buildPromptFromTemplate(selectedTemplate, structuredInput);
+    const generatedOutput =
+      intent === "GENERATE_PLACEHOLDER"
+        ? buildStructuredPlaceholderOutput(selectedTemplate, structuredInput)
+        : null;
 
     const savedTask = await prisma.$transaction(async (tx) => {
       const existing = taskId
@@ -324,73 +377,64 @@ export async function saveAiTaskAction(
         : null;
 
       const nextStatus = resolveNextAiTaskStatus(intent, existing?.status);
-      const generatedOutput =
-        intent === "GENERATE_PLACEHOLDER"
-          ? buildPlaceholderOutput({ title, direction, notes })
-          : outputText;
-      const taskPrompt = `任务标题：${title}\n内容方向：${direction}\n资料备注：${notes || "暂无补充备注"}`;
-
       const linkedContent =
-        intent === "GENERATE_PLACEHOLDER"
+        intent === "GENERATE_PLACEHOLDER" && selectedTemplate.targetKind === "CONTENT"
           ? await resolveLinkedContent(tx, {
               existingContentId: contentId || existing?.contentId || undefined,
               title,
-              direction,
-              desiredContentType,
+              topic,
+              contentType,
               shouldCreateDraft,
-              placeholderOutput: generatedOutput,
+              placeholderOutput: generatedOutput?.text ?? "",
               actorName,
             })
           : null;
       const nextContentId =
-        linkedContent?.id ?? (contentId || existing?.contentId || null);
+        linkedContent?.id ??
+        (selectedTemplate.targetKind === "CONTENT"
+          ? contentId || existing?.contentId || null
+          : null);
+
+      const inputPayload = {
+        schemaVersion: "v2" as const,
+        templateId: selectedTemplate.id,
+        templateName: selectedTemplate.name,
+        targetKind: selectedTemplate.targetKind,
+        input: structuredInput,
+      };
+
+      const baseTaskData = {
+        taskType,
+        status: nextStatus,
+        prompt: taskPrompt,
+        inputPayload,
+        outputText: generatedOutput?.text ?? (outputText || null),
+        finishedAt:
+          nextStatus === "SUCCEEDED"
+            ? new Date()
+            : nextStatus === "RUNNING"
+              ? null
+              : existing?.finishedAt ?? null,
+        modelName:
+          intent === "GENERATE_PLACEHOLDER"
+            ? `placeholder-template:${selectedTemplate.id}`
+            : existing?.modelName ?? null,
+        contentId: nextContentId,
+      };
 
       const task = existing
         ? await tx.aiTask.update({
             where: { id: existing.id },
             data: {
-              taskType,
-              status: nextStatus,
-              prompt: taskPrompt,
-              inputPayload: {
-                title,
-                direction,
-                notes,
-                shouldCreateDraft,
-                desiredContentType,
-              },
-              outputText: generatedOutput || null,
-              finishedAt:
-                nextStatus === "SUCCEEDED"
-                  ? new Date()
-                  : nextStatus === "RUNNING"
-                    ? null
-                    : existing.finishedAt,
-              modelName:
-                intent === "GENERATE_PLACEHOLDER"
-                  ? "placeholder-generator"
-                  : existing.modelName,
-              contentId: nextContentId,
+              ...baseTaskData,
+              ...(generatedOutput ? { outputJson: generatedOutput.json } : {}),
             },
             select: { id: true, contentId: true },
           })
         : await tx.aiTask.create({
             data: {
-              taskType,
-              status: nextStatus,
-              prompt: taskPrompt,
-              inputPayload: {
-                title,
-                direction,
-                notes,
-                shouldCreateDraft,
-                desiredContentType,
-              },
-              outputText: generatedOutput || null,
-              finishedAt: nextStatus === "SUCCEEDED" ? new Date() : null,
-              modelName:
-                intent === "GENERATE_PLACEHOLDER" ? "placeholder-generator" : null,
-              contentId: nextContentId,
+              ...baseTaskData,
+              ...(generatedOutput ? { outputJson: generatedOutput.json } : {}),
             },
             select: { id: true, contentId: true },
           });
