@@ -1,11 +1,10 @@
 /**
  * 文件说明：该文件实现后台内容编辑页。
- * 功能说明：展示 Content 的真实编辑表单、工作流记录、版本记录与 AI 任务挂点。
+ * 功能说明：展示 Content 的真实编辑表单、工作流记录、版本记录、AI 任务挂点与前台查看入口。
  *
  * 结构概览：
- *   第一部分：导入依赖
- *   第二部分：公共展示辅助
- *   第三部分：编辑页实现
+ *   第一部分：依赖导入与查询参数工具
+ *   第二部分：内容编辑页实现
  */
 
 import Link from "next/link";
@@ -13,9 +12,7 @@ import { notFound } from "next/navigation";
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { ContentForm } from "@/components/admin/content-form";
 import { ResourceStatusBadge } from "@/components/admin/resource-status-badge";
-import {
-  workflowStatusLabels,
-} from "@/features/admin/resources/constants";
+import { workflowStatusLabels } from "@/features/admin/resources/constants";
 import { getContentEditorData } from "@/features/admin/resources/server";
 import { formatDateTime } from "@/features/admin/resources/utils";
 
@@ -75,20 +72,41 @@ export default async function AdminContentDetailPage({
       ) : null}
 
       <section className="rounded-[28px] border border-line bg-white p-6">
-        <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <h2 className="font-serif text-2xl font-semibold text-foreground">
               编辑内容
             </h2>
             <p className="text-sm leading-7 text-muted">
-              保存会写入 ContentVersion，状态切换会写入 Workflow。这样后续接 AI 编辑部和版本回查时，不需要再改主流程。
+              保存会写入 ContentVersion，状态切换会写入 Workflow。当前编辑页同时承接分类标签、发布时间和前台查看入口。
             </p>
           </div>
-          {result.data.formValues.workflowStatus ? (
-            <ResourceStatusBadge status={result.data.formValues.workflowStatus} />
-          ) : null}
+
+          <div className="flex flex-wrap items-center gap-3">
+            {result.data.formValues.workflowStatus ? (
+              <ResourceStatusBadge status={result.data.formValues.workflowStatus} />
+            ) : null}
+            {result.data.publicPath ? (
+              <Link
+                href={result.data.publicPath}
+                target="_blank"
+                className="inline-flex rounded-2xl border border-line px-4 py-2 text-sm font-medium text-foreground transition hover:border-brand hover:text-brand"
+              >
+                前台查看
+              </Link>
+            ) : (
+              <span className="inline-flex rounded-2xl border border-dashed border-line px-4 py-2 text-sm text-muted">
+                未发布，前台不可见
+              </span>
+            )}
+          </div>
         </div>
-        <ContentForm initialValues={result.data.formValues} />
+
+        <ContentForm
+          initialValues={result.data.formValues}
+          categoryOptions={result.data.categoryOptions}
+          tagOptions={result.data.tagOptions}
+        />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
@@ -127,7 +145,7 @@ export default async function AdminContentDetailPage({
         <div className="space-y-6">
           <section className="rounded-[28px] border border-line bg-white p-6">
             <h3 className="font-serif text-xl font-semibold text-foreground">
-              内容版本
+              版本记录
             </h3>
             <div className="mt-5 space-y-4">
               {result.data.versions.length > 0 ? (
@@ -173,7 +191,7 @@ export default async function AdminContentDetailPage({
                       <span className="text-xs text-muted">{item.status}</span>
                     </div>
                     <p className="mt-2 text-xs text-muted">
-                      模型：{item.modelName ?? "未记录"}
+                      Provider：{item.modelName ?? "未记录"}
                     </p>
                     <p className="mt-1 text-xs text-muted">
                       创建于：{formatDateTime(item.createdAt)}
@@ -182,7 +200,7 @@ export default async function AdminContentDetailPage({
                 ))
               ) : (
                 <p className="text-sm leading-7 text-muted">
-                  当前还未接入真实 AI 编辑部，但 AiTask 挂点已经可承接后续流程。
+                  当前还没有挂接的 AI 任务，可从 AI 编辑部创建选题并回挂到此内容草稿。
                 </p>
               )}
             </div>

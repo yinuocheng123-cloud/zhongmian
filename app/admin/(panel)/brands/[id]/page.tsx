@@ -1,12 +1,13 @@
 /**
  * 文件说明：该文件实现后台品牌编辑页。
- * 功能说明：展示 Brand 的真实编辑表单与工作流记录。
+ * 功能说明：展示 Brand 的真实编辑表单、工作流记录与前台查看入口，服务品牌库的长期收录与运营。
  *
  * 结构概览：
- *   第一部分：导入依赖
- *   第二部分：编辑页实现
+ *   第一部分：依赖导入与查询参数工具
+ *   第二部分：品牌编辑页实现
  */
 
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { BrandForm } from "@/components/admin/brand-form";
@@ -55,11 +56,7 @@ export default async function AdminBrandDetailPage({
   return (
     <div className="space-y-6">
       {notice ? (
-        <AdminNotice
-          tone="success"
-          title="操作成功"
-          description={`当前品牌已完成：${notice}`}
-        />
+        <AdminNotice tone="success" title="操作成功" description={notice} />
       ) : null}
 
       {result.error ? (
@@ -71,52 +68,87 @@ export default async function AdminBrandDetailPage({
       ) : null}
 
       <section className="rounded-[28px] border border-line bg-white p-6">
-        <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <h2 className="font-serif text-2xl font-semibold text-foreground">
               编辑品牌
             </h2>
             <p className="text-sm leading-7 text-muted">
-              当前品牌页先打通最小发布闭环，后续可以继续承接会员入驻、合作审核与品牌扩展信息。
+              品牌后台当前优先解决品牌收录、方向表达、区域归类、前台展示和发布控制，后续再承接会员与合作流程。
             </p>
           </div>
-          {result.data.formValues.workflowStatus ? (
-            <ResourceStatusBadge status={result.data.formValues.workflowStatus} />
-          ) : null}
+
+          <div className="flex flex-wrap items-center gap-3">
+            {result.data.formValues.workflowStatus ? (
+              <ResourceStatusBadge status={result.data.formValues.workflowStatus} />
+            ) : null}
+            {result.data.publicPath ? (
+              <Link
+                href={result.data.publicPath}
+                target="_blank"
+                className="inline-flex rounded-2xl border border-line px-4 py-2 text-sm font-medium text-foreground transition hover:border-brand hover:text-brand"
+              >
+                前台查看
+              </Link>
+            ) : (
+              <span className="inline-flex rounded-2xl border border-dashed border-line px-4 py-2 text-sm text-muted">
+                未发布，前台不可见
+              </span>
+            )}
+          </div>
         </div>
-        <BrandForm initialValues={result.data.formValues} />
+
+        <BrandForm
+          initialValues={result.data.formValues}
+          categoryOptions={result.data.categoryOptions}
+          tagOptions={result.data.tagOptions}
+        />
       </section>
 
-      <section className="rounded-[28px] border border-line bg-white p-6">
-        <h3 className="font-serif text-xl font-semibold text-foreground">
-          工作流记录
-        </h3>
-        <div className="mt-5 space-y-4">
-          {result.data.workflowHistory.length > 0 ? (
-            result.data.workflowHistory.map((item) => (
-              <div key={item.id} className="rounded-2xl border border-line p-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="text-sm font-semibold text-foreground">
-                    {item.fromStatus
-                      ? `${workflowStatusLabels[item.fromStatus]} → ${workflowStatusLabels[item.toStatus]}`
-                      : `初始化为 ${workflowStatusLabels[item.toStatus]}`}
-                  </span>
-                  <span className="text-xs text-muted">
-                    {formatDateTime(item.createdAt)}
-                  </span>
+      <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="rounded-[28px] border border-line bg-white p-6">
+          <h3 className="font-serif text-xl font-semibold text-foreground">
+            工作流记录
+          </h3>
+          <div className="mt-5 space-y-4">
+            {result.data.workflowHistory.length > 0 ? (
+              result.data.workflowHistory.map((item) => (
+                <div key={item.id} className="rounded-2xl border border-line p-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm font-semibold text-foreground">
+                      {item.fromStatus
+                        ? `${workflowStatusLabels[item.fromStatus]} → ${workflowStatusLabels[item.toStatus]}`
+                        : `初始化为 ${workflowStatusLabels[item.toStatus]}`}
+                    </span>
+                    <span className="text-xs text-muted">
+                      {formatDateTime(item.createdAt)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm leading-7 text-muted">
+                    {item.note ?? "未填写操作备注。"}
+                  </p>
+                  <p className="mt-2 text-xs text-muted">
+                    操作者：{item.actorName ?? "未记录"}
+                  </p>
                 </div>
-                <p className="mt-2 text-sm leading-7 text-muted">
-                  {item.note ?? "未填写操作备注。"}
-                </p>
-                <p className="mt-2 text-xs text-muted">
-                  操作者：{item.actorName ?? "未记录"}
-                </p>
-              </div>
-            ))
-          ) : (
-            <p className="text-sm text-muted">当前还没有工作流记录。</p>
-          )}
-        </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted">当前还没有工作流记录。</p>
+            )}
+          </div>
+        </section>
+
+        <section className="rounded-[28px] border border-line bg-white p-6">
+          <h3 className="font-serif text-xl font-semibold text-foreground">
+            品牌运营提示
+          </h3>
+          <div className="mt-5 space-y-4 text-sm leading-7 text-muted">
+            <p>主营方向用于在品牌列表和企业名片卡片上直接表达品牌定位。</p>
+            <p>地区与城市决定品牌库的行业名录感，也是后续本地化合作筛选的基础。</p>
+            <p>分类体现品牌归属赛道，标签则服务问题入口、专题入口和合作聚合。</p>
+            <p>只有 PUBLISHED 的品牌才会在前台品牌库和品牌详情页公开可见。</p>
+          </div>
+        </section>
       </section>
     </div>
   );

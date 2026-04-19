@@ -1,11 +1,11 @@
 /**
- * 文件说明：该文件实现后台资源管理的服务端提交动作。
- * 功能说明：统一处理 Content / Term / Brand 的新增、编辑、校验与状态流转，并为工作流与版本记录保留稳定入口。
+ * 文件说明：该文件实现后台资源管理模块的服务端提交流程。
+ * 功能说明：统一处理 Content / Term / Brand 的保存、快速状态切换、工作流记录、分类标签更新与版本记录。
  *
  * 结构概览：
  *   第一部分：基础校验与公共辅助
- *   第二部分：工作流与版本记录辅助
- *   第三部分：三类资源保存动作
+ *   第二部分：Content / Term / Brand 保存动作
+ *   第三部分：列表页快速状态切换动作
  */
 
 "use server";
@@ -21,6 +21,7 @@ import {
   intentLabels,
   resourceLabels,
   type ResourceFormIntent,
+  type ResourceKind,
 } from "@/features/admin/resources/constants";
 import {
   getAdminActorName,
@@ -30,7 +31,9 @@ import type { ResourceFormState } from "@/features/admin/resources/types";
 import {
   buildWorkflowNote,
   getErrorMessage,
+  getSuspiciousPublishReason,
   parseAliases,
+  parseDateTimeInput,
   resolvePublishedAt,
   resolveWorkflowStatus,
   slugify,
@@ -39,6 +42,13 @@ import { prisma } from "@/lib/prisma";
 
 function getTrimmedValue(formData: FormData, key: string) {
   return String(formData.get(key) ?? "").trim();
+}
+
+function getSelectedIds(formData: FormData, key: string) {
+  return formData
+    .getAll(key)
+    .map((item) => String(item).trim())
+    .filter(Boolean);
 }
 
 function buildFieldErrorState(
@@ -76,7 +86,7 @@ function ensureDatabaseReady() {
 
 async function ensureUniqueSlug(
   tx: Prisma.TransactionClient,
-  kind: "content" | "term" | "brand",
+  kind: ResourceKind,
   slug: string,
   currentId?: string,
 ) {
@@ -92,6 +102,16 @@ async function ensureUniqueSlug(
         : await tx.brand.findFirst({ where, select: { id: true } });
 
   return !existing;
+}
+
+function validatePublishingSafety(value: string) {
+  const suspiciousReason = getSuspiciousPublishReason(value);
+
+  if (!suspiciousReason) {
+    return null;
+  }
+
+  return suspiciousReason;
 }
 
 async function createWorkflowLog(
@@ -158,6 +178,374 @@ async function createContentVersion(
   });
 }
 
+function buildStatusActionRedirect(nextPath: string, label: string) {
+  return `${nextPath}?notice=${encodeURIComponent(label)}`;
+}
+
+function buildStatusActionErrorRedirect(nextPath: string, message: string) {
+  return `${nextPath}?error=${encodeURIComponent(message)}`;
+}
+
+function revalidateAdminResourcePaths(kind: ResourceKind, id: string) {
+  revalidatePath("/admin");
+  revalidatePath(resourceLabels[kind].listPath);
+  revalidatePath(`${resourceLabels[kind].listPath}/${id}`);
+}
+
+type ContentSavePayload = {
+  title: string;
+  slug: string;
+  summary: string;
+  body: string;
+  contentType: ContentType;
+  publishedAtInput: string;
+  categoryIds: string[];
+  tagIds: string[];
+  intent: ResourceFormIntent;
+};
+
+async function saveContent(
+  contentId: string | null,
+  payload: ContentSavePayload,
+) {
+  const actorName = getAdminActorName();
+
+  return prisma.$transaction(async (tx) => {
+    const isUniqueSlug = await ensureUniqueSlug(
+      tx,
+      "content",
+      payload.slug,
+      contentId ?? undefined,
+    );
+
+    if (!isUniqueSlug) {
+      throw buildFieldErrorState("Slug 已存在，请更换。", {
+        slug: "当前 slug 已被其他内容占用。",
+      });
+    }
+
+    const existing = contentId
+      ? await tx.content.findUnique({
+          where: { id: contentId },
+          select: { id: true, workflowStatus: true, publishedAt: true },
+        })
+      : null;
+
+    const nextStatus = resolveWorkflowStatus(payload.intent, existing?.workflowStatus);
+    const publishReason =
+      nextStatus === "PUBLISHED"
+        ? validatePublishingSafety(payload.title)
+        : null;
+
+    if (publishReason) {
+      throw buildFieldErrorState(publishReason, {
+        title: publishReason,
+      });
+    }
+
+    const publishedAt = resolvePublishedAt({
+      nextStatus,
+      currentPublishedAt: existing?.publishedAt,
+      requestedPublishedAt: parseDateTimeInput(payload.publishedAtInput),
+    });
+
+    const categoryConnections = payload.categoryIds.map((id) => ({ id }));
+    const tagConnections = payload.tagIds.map((id) => ({ id }));
+
+    const content = existing
+      ? await tx.content.update({
+          where: { id: existing.id },
+          data: {
+            title: payload.title,
+            slug: payload.slug,
+            summary: payload.summary,
+            body: payload.body,
+            contentType: payload.contentType,
+            workflowStatus: nextStatus,
+            publishedAt,
+            categories: {
+              set: categoryConnections,
+            },
+            tags: {
+              set: tagConnections,
+            },
+          },
+        })
+      : await tx.content.create({
+          data: {
+            title: payload.title,
+            slug: payload.slug,
+            summary: payload.summary,
+            body: payload.body,
+            contentType: payload.contentType,
+            workflowStatus: nextStatus,
+            publishedAt,
+            seoKeywords: [],
+            categories: {
+              connect: categoryConnections,
+            },
+            tags: {
+              connect: tagConnections,
+            },
+          },
+        });
+
+    await createWorkflowLog(tx, {
+      targetType: "CONTENT",
+      fromStatus: existing?.workflowStatus,
+      toStatus: nextStatus,
+      note: buildWorkflowNote(payload.intent, nextStatus),
+      actorName,
+      contentId: content.id,
+    });
+
+    await createContentVersion(tx, {
+      contentId: content.id,
+      title: payload.title,
+      summary: payload.summary,
+      body: payload.body,
+      createdBy: actorName,
+      changeNote: `${intentLabels[payload.intent]}：${resourceLabels.content.singular}`,
+    });
+
+    return content;
+  });
+}
+
+type TermSavePayload = {
+  name: string;
+  slug: string;
+  aliases: string;
+  shortDefinition: string;
+  definition: string;
+  body: string;
+  publishedAtInput: string;
+  categoryIds: string[];
+  tagIds: string[];
+  intent: ResourceFormIntent;
+};
+
+async function saveTerm(
+  termId: string | null,
+  payload: TermSavePayload,
+) {
+  const actorName = getAdminActorName();
+
+  return prisma.$transaction(async (tx) => {
+    const isUniqueSlug = await ensureUniqueSlug(
+      tx,
+      "term",
+      payload.slug,
+      termId ?? undefined,
+    );
+
+    if (!isUniqueSlug) {
+      throw buildFieldErrorState("Slug 已存在，请更换。", {
+        slug: "当前 slug 已被其他词条占用。",
+      });
+    }
+
+    const existing = termId
+      ? await tx.term.findUnique({
+          where: { id: termId },
+          select: { id: true, workflowStatus: true, publishedAt: true },
+        })
+      : null;
+
+    const nextStatus = resolveWorkflowStatus(payload.intent, existing?.workflowStatus);
+    const publishReason =
+      nextStatus === "PUBLISHED"
+        ? validatePublishingSafety(payload.name)
+        : null;
+
+    if (publishReason) {
+      throw buildFieldErrorState(publishReason, {
+        name: publishReason,
+      });
+    }
+
+    const publishedAt = resolvePublishedAt({
+      nextStatus,
+      currentPublishedAt: existing?.publishedAt,
+      requestedPublishedAt: parseDateTimeInput(payload.publishedAtInput),
+    });
+
+    const categoryConnections = payload.categoryIds.map((id) => ({ id }));
+    const tagConnections = payload.tagIds.map((id) => ({ id }));
+
+    const term = existing
+      ? await tx.term.update({
+          where: { id: existing.id },
+          data: {
+            name: payload.name,
+            slug: payload.slug,
+            aliases: parseAliases(payload.aliases),
+            shortDefinition: payload.shortDefinition || null,
+            definition: payload.definition,
+            body: payload.body || null,
+            workflowStatus: nextStatus,
+            publishedAt,
+            categories: {
+              set: categoryConnections,
+            },
+            tags: {
+              set: tagConnections,
+            },
+          },
+        })
+      : await tx.term.create({
+          data: {
+            name: payload.name,
+            slug: payload.slug,
+            aliases: parseAliases(payload.aliases),
+            shortDefinition: payload.shortDefinition || null,
+            definition: payload.definition,
+            body: payload.body || null,
+            workflowStatus: nextStatus,
+            publishedAt,
+            seoKeywords: [],
+            categories: {
+              connect: categoryConnections,
+            },
+            tags: {
+              connect: tagConnections,
+            },
+          },
+        });
+
+    await createWorkflowLog(tx, {
+      targetType: "TERM",
+      fromStatus: existing?.workflowStatus,
+      toStatus: nextStatus,
+      note: buildWorkflowNote(payload.intent, nextStatus),
+      actorName,
+      termId: term.id,
+    });
+
+    return term;
+  });
+}
+
+type BrandSavePayload = {
+  name: string;
+  slug: string;
+  tagline: string;
+  summary: string;
+  description: string;
+  website: string;
+  region: string;
+  city: string;
+  publishedAtInput: string;
+  categoryIds: string[];
+  tagIds: string[];
+  intent: ResourceFormIntent;
+};
+
+async function saveBrand(
+  brandId: string | null,
+  payload: BrandSavePayload,
+) {
+  const actorName = getAdminActorName();
+
+  return prisma.$transaction(async (tx) => {
+    const isUniqueSlug = await ensureUniqueSlug(
+      tx,
+      "brand",
+      payload.slug,
+      brandId ?? undefined,
+    );
+
+    if (!isUniqueSlug) {
+      throw buildFieldErrorState("Slug 已存在，请更换。", {
+        slug: "当前 slug 已被其他品牌占用。",
+      });
+    }
+
+    const existing = brandId
+      ? await tx.brand.findUnique({
+          where: { id: brandId },
+          select: { id: true, workflowStatus: true, publishedAt: true },
+        })
+      : null;
+
+    const nextStatus = resolveWorkflowStatus(payload.intent, existing?.workflowStatus);
+    const publishReason =
+      nextStatus === "PUBLISHED"
+        ? validatePublishingSafety(payload.name)
+        : null;
+
+    if (publishReason) {
+      throw buildFieldErrorState(publishReason, {
+        name: publishReason,
+      });
+    }
+
+    const publishedAt = resolvePublishedAt({
+      nextStatus,
+      currentPublishedAt: existing?.publishedAt,
+      requestedPublishedAt: parseDateTimeInput(payload.publishedAtInput),
+    });
+
+    const categoryConnections = payload.categoryIds.map((id) => ({ id }));
+    const tagConnections = payload.tagIds.map((id) => ({ id }));
+
+    const brand = existing
+      ? await tx.brand.update({
+          where: { id: existing.id },
+          data: {
+            name: payload.name,
+            slug: payload.slug,
+            tagline: payload.tagline || null,
+            summary: payload.summary,
+            description: payload.description,
+            website: payload.website || null,
+            region: payload.region || null,
+            city: payload.city || null,
+            workflowStatus: nextStatus,
+            publishedAt,
+            categories: {
+              set: categoryConnections,
+            },
+            tags: {
+              set: tagConnections,
+            },
+          },
+        })
+      : await tx.brand.create({
+          data: {
+            name: payload.name,
+            slug: payload.slug,
+            tagline: payload.tagline || null,
+            summary: payload.summary,
+            description: payload.description,
+            website: payload.website || null,
+            region: payload.region || null,
+            city: payload.city || null,
+            workflowStatus: nextStatus,
+            publishedAt,
+            seoKeywords: [],
+            categories: {
+              connect: categoryConnections,
+            },
+            tags: {
+              connect: tagConnections,
+            },
+          },
+        });
+
+    await createWorkflowLog(tx, {
+      targetType: "BRAND",
+      fromStatus: existing?.workflowStatus,
+      toStatus: nextStatus,
+      note: buildWorkflowNote(payload.intent, nextStatus),
+      actorName,
+      brandId: brand.id,
+    });
+
+    return brand;
+  });
+}
+
 export async function saveContentAction(
   contentId: string | null,
   _prevState: ResourceFormState,
@@ -174,6 +562,9 @@ export async function saveContentAction(
     const summary = getTrimmedValue(formData, "summary");
     const body = getTrimmedValue(formData, "body");
     const contentType = getTrimmedValue(formData, "contentType") as ContentType;
+    const publishedAtInput = getTrimmedValue(formData, "publishedAt");
+    const categoryIds = getSelectedIds(formData, "categoryIds");
+    const tagIds = getSelectedIds(formData, "tagIds");
     const intent = ensureIntent(formData);
 
     const fieldErrors: Record<string, string> = {};
@@ -185,87 +576,27 @@ export async function saveContentAction(
     if (!Object.values(ContentType).includes(contentType)) {
       fieldErrors.contentType = "请选择合法的内容类型。";
     }
+    if (publishedAtInput && !parseDateTimeInput(publishedAtInput)) {
+      fieldErrors.publishedAt = "发布时间格式无效，请重新选择。";
+    }
 
     if (Object.keys(fieldErrors).length > 0) {
       return buildFieldErrorState("请先修正内容表单中的必填项。", fieldErrors);
     }
 
-    const actorName = getAdminActorName();
-
-    const saved = await prisma.$transaction(async (tx) => {
-      const isUniqueSlug = await ensureUniqueSlug(
-        tx,
-        "content",
-        slug,
-        contentId ?? undefined,
-      );
-
-      if (!isUniqueSlug) {
-        throw buildFieldErrorState("Slug 已存在，请更换。", {
-          slug: "当前 slug 已被其他内容占用。",
-        });
-      }
-
-      const existing = contentId
-        ? await tx.content.findUnique({
-            where: { id: contentId },
-            select: { id: true, workflowStatus: true, publishedAt: true },
-          })
-        : null;
-
-      const nextStatus = resolveWorkflowStatus(intent, existing?.workflowStatus);
-      const publishedAt = resolvePublishedAt(nextStatus, existing?.publishedAt);
-
-      const content = existing
-        ? await tx.content.update({
-            where: { id: existing.id },
-            data: {
-              title,
-              slug,
-              summary,
-              body,
-              contentType,
-              workflowStatus: nextStatus,
-              publishedAt,
-            },
-          })
-        : await tx.content.create({
-            data: {
-              title,
-              slug,
-              summary,
-              body,
-              contentType,
-              workflowStatus: nextStatus,
-              publishedAt,
-              seoKeywords: [],
-            },
-          });
-
-      await createWorkflowLog(tx, {
-        targetType: "CONTENT",
-        fromStatus: existing?.workflowStatus,
-        toStatus: nextStatus,
-        note: buildWorkflowNote(intent, nextStatus),
-        actorName,
-        contentId: content.id,
-      });
-
-      await createContentVersion(tx, {
-        contentId: content.id,
-        title,
-        summary,
-        body,
-        createdBy: actorName,
-        changeNote: `${intentLabels[intent]}：${resourceLabels.content.singular}`,
-      });
-
-      return content;
+    const saved = await saveContent(contentId, {
+      title,
+      slug,
+      summary,
+      body,
+      contentType,
+      publishedAtInput,
+      categoryIds,
+      tagIds,
+      intent,
     });
 
-    revalidatePath("/admin");
-    revalidatePath("/admin/content");
-    revalidatePath(`/admin/content/${saved.id}`);
+    revalidateAdminResourcePaths("content", saved.id);
     redirect(
       `/admin/content/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
     );
@@ -300,6 +631,9 @@ export async function saveTermAction(
     const shortDefinition = getTrimmedValue(formData, "shortDefinition");
     const definition = getTrimmedValue(formData, "definition");
     const body = getTrimmedValue(formData, "body");
+    const publishedAtInput = getTrimmedValue(formData, "publishedAt");
+    const categoryIds = getSelectedIds(formData, "categoryIds");
+    const tagIds = getSelectedIds(formData, "tagIds");
     const intent = ensureIntent(formData);
 
     const fieldErrors: Record<string, string> = {};
@@ -307,80 +641,28 @@ export async function saveTermAction(
     if (!name) fieldErrors.name = "词条名称不能为空。";
     if (!slug) fieldErrors.slug = "Slug 不能为空。";
     if (!definition) fieldErrors.definition = "标准定义不能为空。";
+    if (publishedAtInput && !parseDateTimeInput(publishedAtInput)) {
+      fieldErrors.publishedAt = "发布时间格式无效，请重新选择。";
+    }
 
     if (Object.keys(fieldErrors).length > 0) {
       return buildFieldErrorState("请先修正词条表单中的必填项。", fieldErrors);
     }
 
-    const actorName = getAdminActorName();
-
-    const saved = await prisma.$transaction(async (tx) => {
-      const isUniqueSlug = await ensureUniqueSlug(
-        tx,
-        "term",
-        slug,
-        termId ?? undefined,
-      );
-
-      if (!isUniqueSlug) {
-        throw buildFieldErrorState("Slug 已存在，请更换。", {
-          slug: "当前 slug 已被其他词条占用。",
-        });
-      }
-
-      const existing = termId
-        ? await tx.term.findUnique({
-            where: { id: termId },
-            select: { id: true, workflowStatus: true, publishedAt: true },
-          })
-        : null;
-
-      const nextStatus = resolveWorkflowStatus(intent, existing?.workflowStatus);
-      const publishedAt = resolvePublishedAt(nextStatus, existing?.publishedAt);
-
-      const term = existing
-        ? await tx.term.update({
-            where: { id: existing.id },
-            data: {
-              name,
-              slug,
-              aliases: parseAliases(aliases),
-              shortDefinition: shortDefinition || null,
-              definition,
-              body: body || null,
-              workflowStatus: nextStatus,
-              publishedAt,
-            },
-          })
-        : await tx.term.create({
-            data: {
-              name,
-              slug,
-              aliases: parseAliases(aliases),
-              shortDefinition: shortDefinition || null,
-              definition,
-              body: body || null,
-              workflowStatus: nextStatus,
-              publishedAt,
-              seoKeywords: [],
-            },
-          });
-
-      await createWorkflowLog(tx, {
-        targetType: "TERM",
-        fromStatus: existing?.workflowStatus,
-        toStatus: nextStatus,
-        note: buildWorkflowNote(intent, nextStatus),
-        actorName,
-        termId: term.id,
-      });
-
-      return term;
+    const saved = await saveTerm(termId, {
+      name,
+      slug,
+      aliases,
+      shortDefinition,
+      definition,
+      body,
+      publishedAtInput,
+      categoryIds,
+      tagIds,
+      intent,
     });
 
-    revalidatePath("/admin");
-    revalidatePath("/admin/terms");
-    revalidatePath(`/admin/terms/${saved.id}`);
+    revalidateAdminResourcePaths("term", saved.id);
     redirect(
       `/admin/terms/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
     );
@@ -411,95 +693,47 @@ export async function saveBrandAction(
     const name = getTrimmedValue(formData, "name");
     const rawSlug = getTrimmedValue(formData, "slug");
     const slug = slugify(rawSlug || name);
+    const tagline = getTrimmedValue(formData, "tagline");
     const summary = getTrimmedValue(formData, "summary");
     const description = getTrimmedValue(formData, "description");
     const website = getTrimmedValue(formData, "website");
     const region = getTrimmedValue(formData, "region");
     const city = getTrimmedValue(formData, "city");
+    const publishedAtInput = getTrimmedValue(formData, "publishedAt");
+    const categoryIds = getSelectedIds(formData, "categoryIds");
+    const tagIds = getSelectedIds(formData, "tagIds");
     const intent = ensureIntent(formData);
 
     const fieldErrors: Record<string, string> = {};
 
     if (!name) fieldErrors.name = "品牌名称不能为空。";
     if (!slug) fieldErrors.slug = "Slug 不能为空。";
-    if (!summary) fieldErrors.summary = "摘要不能为空。";
+    if (!summary) fieldErrors.summary = "简介不能为空。";
     if (!description) fieldErrors.description = "品牌描述不能为空。";
+    if (publishedAtInput && !parseDateTimeInput(publishedAtInput)) {
+      fieldErrors.publishedAt = "发布时间格式无效，请重新选择。";
+    }
 
     if (Object.keys(fieldErrors).length > 0) {
       return buildFieldErrorState("请先修正品牌表单中的必填项。", fieldErrors);
     }
 
-    const actorName = getAdminActorName();
-
-    const saved = await prisma.$transaction(async (tx) => {
-      const isUniqueSlug = await ensureUniqueSlug(
-        tx,
-        "brand",
-        slug,
-        brandId ?? undefined,
-      );
-
-      if (!isUniqueSlug) {
-        throw buildFieldErrorState("Slug 已存在，请更换。", {
-          slug: "当前 slug 已被其他品牌占用。",
-        });
-      }
-
-      const existing = brandId
-        ? await tx.brand.findUnique({
-            where: { id: brandId },
-            select: { id: true, workflowStatus: true, publishedAt: true },
-          })
-        : null;
-
-      const nextStatus = resolveWorkflowStatus(intent, existing?.workflowStatus);
-      const publishedAt = resolvePublishedAt(nextStatus, existing?.publishedAt);
-
-      const brand = existing
-        ? await tx.brand.update({
-            where: { id: existing.id },
-            data: {
-              name,
-              slug,
-              summary,
-              description,
-              website: website || null,
-              region: region || null,
-              city: city || null,
-              workflowStatus: nextStatus,
-              publishedAt,
-            },
-          })
-        : await tx.brand.create({
-            data: {
-              name,
-              slug,
-              summary,
-              description,
-              website: website || null,
-              region: region || null,
-              city: city || null,
-              workflowStatus: nextStatus,
-              publishedAt,
-              seoKeywords: [],
-            },
-          });
-
-      await createWorkflowLog(tx, {
-        targetType: "BRAND",
-        fromStatus: existing?.workflowStatus,
-        toStatus: nextStatus,
-        note: buildWorkflowNote(intent, nextStatus),
-        actorName,
-        brandId: brand.id,
-      });
-
-      return brand;
+    const saved = await saveBrand(brandId, {
+      name,
+      slug,
+      tagline,
+      summary,
+      description,
+      website,
+      region,
+      city,
+      publishedAtInput,
+      categoryIds,
+      tagIds,
+      intent,
     });
 
-    revalidatePath("/admin");
-    revalidatePath("/admin/brands");
-    revalidatePath(`/admin/brands/${saved.id}`);
+    revalidateAdminResourcePaths("brand", saved.id);
     redirect(
       `/admin/brands/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
     );
@@ -514,5 +748,201 @@ export async function saveBrandAction(
     }
 
     return { status: "error", message: getErrorMessage(error) };
+  }
+}
+
+async function updateResourceWorkflowStatus(
+  kind: ResourceKind,
+  resourceId: string,
+  intent: Extract<ResourceFormIntent, "SAVE_DRAFT" | "SUBMIT_REVIEW" | "PUBLISH" | "UNPUBLISH">,
+) {
+  const actorName = getAdminActorName();
+
+  return prisma.$transaction(async (tx) => {
+    if (kind === "content") {
+      const existing = await tx.content.findUnique({
+        where: { id: resourceId },
+        select: {
+          id: true,
+          title: true,
+          summary: true,
+          body: true,
+          workflowStatus: true,
+          publishedAt: true,
+        },
+      });
+
+      if (!existing) {
+        throw new Error("内容不存在或已被删除。");
+      }
+
+      const nextStatus = resolveWorkflowStatus(intent, existing.workflowStatus);
+      const publishReason =
+        nextStatus === "PUBLISHED"
+          ? validatePublishingSafety(existing.title)
+          : null;
+
+      if (publishReason) {
+        throw new Error(publishReason);
+      }
+
+      const updated = await tx.content.update({
+        where: { id: existing.id },
+        data: {
+          workflowStatus: nextStatus,
+          publishedAt: resolvePublishedAt({
+            nextStatus,
+            currentPublishedAt: existing.publishedAt,
+          }),
+        },
+        select: {
+          id: true,
+          title: true,
+          summary: true,
+          body: true,
+          workflowStatus: true,
+        },
+      });
+
+      await createWorkflowLog(tx, {
+        targetType: "CONTENT",
+        fromStatus: existing.workflowStatus,
+        toStatus: updated.workflowStatus,
+        note: `列表页快速操作：${buildWorkflowNote(intent, updated.workflowStatus)}`,
+        actorName,
+        contentId: updated.id,
+      });
+
+      await createContentVersion(tx, {
+        contentId: updated.id,
+        title: updated.title,
+        summary: updated.summary ?? "",
+        body: updated.body ?? "",
+        createdBy: actorName,
+        changeNote: `列表页快速操作：${intentLabels[intent]}`,
+      });
+
+      return updated.id;
+    }
+
+    if (kind === "term") {
+      const existing = await tx.term.findUnique({
+        where: { id: resourceId },
+        select: {
+          id: true,
+          name: true,
+          workflowStatus: true,
+          publishedAt: true,
+        },
+      });
+
+      if (!existing) {
+        throw new Error("词条不存在或已被删除。");
+      }
+
+      const nextStatus = resolveWorkflowStatus(intent, existing.workflowStatus);
+      const publishReason =
+        nextStatus === "PUBLISHED"
+          ? validatePublishingSafety(existing.name)
+          : null;
+
+      if (publishReason) {
+        throw new Error(publishReason);
+      }
+
+      const updated = await tx.term.update({
+        where: { id: existing.id },
+        data: {
+          workflowStatus: nextStatus,
+          publishedAt: resolvePublishedAt({
+            nextStatus,
+            currentPublishedAt: existing.publishedAt,
+          }),
+        },
+        select: {
+          id: true,
+          workflowStatus: true,
+        },
+      });
+
+      await createWorkflowLog(tx, {
+        targetType: "TERM",
+        fromStatus: existing.workflowStatus,
+        toStatus: updated.workflowStatus,
+        note: `列表页快速操作：${buildWorkflowNote(intent, updated.workflowStatus)}`,
+        actorName,
+        termId: updated.id,
+      });
+
+      return updated.id;
+    }
+
+    const existing = await tx.brand.findUnique({
+      where: { id: resourceId },
+      select: {
+        id: true,
+        name: true,
+        workflowStatus: true,
+        publishedAt: true,
+      },
+    });
+
+    if (!existing) {
+      throw new Error("品牌不存在或已被删除。");
+    }
+
+    const nextStatus = resolveWorkflowStatus(intent, existing.workflowStatus);
+    const publishReason =
+      nextStatus === "PUBLISHED"
+        ? validatePublishingSafety(existing.name)
+        : null;
+
+    if (publishReason) {
+      throw new Error(publishReason);
+    }
+
+    const updated = await tx.brand.update({
+      where: { id: existing.id },
+      data: {
+        workflowStatus: nextStatus,
+        publishedAt: resolvePublishedAt({
+          nextStatus,
+          currentPublishedAt: existing.publishedAt,
+        }),
+      },
+      select: {
+        id: true,
+        workflowStatus: true,
+      },
+    });
+
+    await createWorkflowLog(tx, {
+      targetType: "BRAND",
+      fromStatus: existing.workflowStatus,
+      toStatus: updated.workflowStatus,
+      note: `列表页快速操作：${buildWorkflowNote(intent, updated.workflowStatus)}`,
+      actorName,
+      brandId: updated.id,
+    });
+
+    return updated.id;
+  });
+}
+
+export async function changeResourceWorkflowStatusAction(
+  kind: ResourceKind,
+  resourceId: string,
+  intent: Extract<ResourceFormIntent, "SAVE_DRAFT" | "SUBMIT_REVIEW" | "PUBLISH" | "UNPUBLISH">,
+  nextPath: string,
+) {
+  await requireAdminSession(nextPath);
+
+  try {
+    ensureDatabaseReady();
+    const savedId = await updateResourceWorkflowStatus(kind, resourceId, intent);
+    revalidateAdminResourcePaths(kind, savedId);
+    redirect(buildStatusActionRedirect(nextPath, intentLabels[intent]));
+  } catch (error) {
+    redirect(buildStatusActionErrorRedirect(nextPath, getErrorMessage(error)));
   }
 }

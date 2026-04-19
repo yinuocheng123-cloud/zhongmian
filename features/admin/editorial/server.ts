@@ -1,9 +1,9 @@
 /**
- * 文件说明：该文件实现 AI 编辑部模块所需的服务端数据读取能力。
- * 功能说明：统一提供 AI 任务列表、编辑页数据、可关联内容候选项与模板候选项，并在数据库不可用时给出稳定兜底。
+ * 文件说明：该文件实现 AI 编辑部模块的服务端数据读取能力。
+ * 功能说明：提供任务列表、筛选、模板选项、结构化输入展示、生成结果展示与 Content 挂接查询。
  *
  * 结构概览：
- *   第一部分：结果包装与查询兜底
+ *   第一部分：结果封装与数据库兜底
  *   第二部分：AI 任务列表查询
  *   第三部分：AI 任务创建 / 编辑页查询
  */
@@ -146,9 +146,11 @@ export async function getAiTaskList(query: AiTaskListQuery) {
       const items = await prisma.aiTask.findMany({
         where: {
           ...(query.status ? { status: query.status } : {}),
+          ...(query.taskType ? { taskType: query.taskType } : {}),
+          ...(query.provider ? { modelName: query.provider } : {}),
           ...buildAiTaskSearchFilter(query.q),
         },
-        orderBy: { updatedAt: "desc" },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
         select: {
           id: true,
           taskType: true,
@@ -158,6 +160,7 @@ export async function getAiTaskList(query: AiTaskListQuery) {
           updatedAt: true,
           finishedAt: true,
           inputPayload: true,
+          outputText: true,
           content: {
             select: {
               id: true,
@@ -183,6 +186,8 @@ export async function getAiTaskList(query: AiTaskListQuery) {
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
           finishedAt: item.finishedAt,
+          excerpt: item.outputText?.slice(0, 90) ?? "当前还没有生成结果。",
+          generationGoal: payload.input.generationGoal,
           content: item.content,
         };
       });
@@ -209,6 +214,7 @@ export async function getAiTaskEditorData(id: string) {
             finishedAt: true,
             inputPayload: true,
             outputText: true,
+            outputJson: true,
             content: {
               select: {
                 id: true,
@@ -265,6 +271,10 @@ export async function getAiTaskEditorData(id: string) {
         contentOptions: sharedOptions.contentOptions,
         templateOptions,
         providerId: task.modelName,
+        templateName: payload.templateName,
+        targetKind: payload.targetKind,
+        structuredInput: payload.input,
+        outputJson: task.outputJson,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt,
         finishedAt: task.finishedAt,

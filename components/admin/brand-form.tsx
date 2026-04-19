@@ -1,30 +1,42 @@
 /**
  * 文件说明：该文件实现后台品牌表单组件。
- * 功能说明：提供 Brand 的新建、编辑、基础校验与最小发布流转入口。
+ * 功能说明：提供 Brand 的新建、编辑、主营方向维护、分类标签管理与状态流转入口。
  *
  * 结构概览：
- *   第一部分：导入依赖
+ *   第一部分：依赖导入
  *   第二部分：品牌表单组件
  */
 
 "use client";
 
 import { useActionState } from "react";
+import { AdminNotice } from "@/components/admin/admin-notice";
+import {
+  AdminCheckboxGroup,
+  AdminDateTimeInput,
+  AdminInput,
+  AdminTextarea,
+} from "@/components/admin/form-controls";
+import { FormSubmitButton } from "@/components/admin/form-submit-button";
 import { intentLabels } from "@/features/admin/resources/constants";
+import { saveBrandAction } from "@/features/admin/resources/actions";
 import {
   initialResourceFormState,
   type BrandFormValues,
+  type TaxonomyOption,
 } from "@/features/admin/resources/types";
-import { saveBrandAction } from "@/features/admin/resources/actions";
-import { AdminNotice } from "@/components/admin/admin-notice";
-import { AdminInput, AdminTextarea } from "@/components/admin/form-controls";
-import { FormSubmitButton } from "@/components/admin/form-submit-button";
 
 type BrandFormProps = {
   initialValues: BrandFormValues;
+  categoryOptions: TaxonomyOption[];
+  tagOptions: TaxonomyOption[];
 };
 
-export function BrandForm({ initialValues }: BrandFormProps) {
+export function BrandForm({
+  initialValues,
+  categoryOptions,
+  tagOptions,
+}: BrandFormProps) {
   const boundAction = saveBrandAction.bind(null, initialValues.id ?? null);
   const [state, formAction] = useActionState(
     boundAction,
@@ -55,8 +67,24 @@ export function BrandForm({ initialValues }: BrandFormProps) {
         />
       </div>
 
+      <div className="grid gap-5 lg:grid-cols-2">
+        <AdminInput
+          label="主营方向"
+          name="tagline"
+          defaultValue={initialValues.tagline}
+          placeholder="例如：睡眠监测 / 睡眠诊疗 / 睡眠产品"
+        />
+        <AdminDateTimeInput
+          label="发布时间"
+          name="publishedAt"
+          defaultValue={initialValues.publishedAt}
+          description="品牌正式展示时可指定发布时间。"
+          error={state.fieldErrors?.publishedAt}
+        />
+      </div>
+
       <AdminTextarea
-        label="摘要"
+        label="简介"
         name="summary"
         defaultValue={initialValues.summary}
         required
@@ -65,7 +93,7 @@ export function BrandForm({ initialValues }: BrandFormProps) {
       />
 
       <AdminTextarea
-        label="品牌描述"
+        label="详细介绍"
         name="description"
         defaultValue={initialValues.description}
         required
@@ -81,7 +109,7 @@ export function BrandForm({ initialValues }: BrandFormProps) {
           placeholder="https://example.com"
         />
         <AdminInput
-          label="区域"
+          label="地区"
           name="region"
           defaultValue={initialValues.region}
           placeholder="华东 / 华南 / 华北"
@@ -94,10 +122,34 @@ export function BrandForm({ initialValues }: BrandFormProps) {
         />
       </div>
 
+      <AdminCheckboxGroup
+        label="品牌分类"
+        name="categoryIds"
+        options={categoryOptions.map((item) => ({
+          label: item.name,
+          value: item.id,
+          description: item.description,
+        }))}
+        defaultValues={initialValues.categoryIds}
+        description="分类用于品牌目录、行业名录和商业入口运营。"
+      />
+
+      <AdminCheckboxGroup
+        label="品牌标签"
+        name="tagIds"
+        options={tagOptions.map((item) => ({
+          label: item.name,
+          value: item.id,
+          description: item.description,
+        }))}
+        defaultValues={initialValues.tagIds}
+        description="标签用于连接主题问题、品牌方向与专题聚合。"
+      />
+
       <div className="rounded-[28px] border border-line bg-surface-soft p-5">
         <p className="text-sm font-semibold text-foreground">状态流转</p>
         <p className="mt-2 text-sm leading-7 text-muted">
-          品牌管理当前优先服务品牌库与后续企业入驻流程，因此先保证最小可用的保存、提审、发布和下线闭环。
+          品牌库当前优先服务收录、审核、展示和下线四类操作，满足正式运营与商业承接的最小闭环。
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
           <FormSubmitButton intent="SAVE" label={intentLabels.SAVE} tone="primary" />

@@ -1,14 +1,15 @@
 /**
- * 文件说明：该文件实现后台资源列表页的搜索和入口工具栏。
- * 功能说明：统一提供搜索、状态筛选与“新建资源”入口，为后续扩展分类、标签和高级筛选保留结构。
+ * 文件说明：该文件实现后台资源列表页的搜索与入口工具栏。
+ * 功能说明：统一提供搜索、状态筛选、内容类型筛选与新建入口，为内容、词条、品牌三类后台保持一致操作体验。
  *
  * 结构概览：
- *   第一部分：导入依赖
- *   第二部分：工具栏组件
+ *   第一部分：依赖导入
+ *   第二部分：资源工具栏组件
  */
 
 import Link from "next/link";
 import {
+  contentTypeOptions,
   resourceLabels,
   workflowFilterOptions,
   type ResourceKind,
@@ -18,12 +19,14 @@ type ResourceToolbarProps = {
   resource: ResourceKind;
   q?: string;
   status?: string;
+  contentType?: string;
 };
 
 export function ResourceToolbar({
   resource,
   q = "",
   status = "",
+  contentType = "",
 }: ResourceToolbarProps) {
   const label = resourceLabels[resource];
 
@@ -35,7 +38,7 @@ export function ResourceToolbar({
             {label.plural}
           </h2>
           <p className="text-sm leading-7 text-muted">
-            当前提供基础搜索与状态筛选结构，后续可以继续接入分类、标签与更多高级筛选。
+            当前提供搜索、状态筛选和前台联动入口，后续继续承接更细的运营动作，但不把后台做成过重的通用 CMS。
           </p>
         </div>
         <Link
@@ -46,17 +49,41 @@ export function ResourceToolbar({
         </Link>
       </div>
 
-      <form className="mt-6 grid gap-4 lg:grid-cols-[1fr_220px_120px]">
+      <form
+        className={`mt-6 grid gap-4 ${
+          resource === "content"
+            ? "lg:grid-cols-[1fr_200px_200px_120px]"
+            : "lg:grid-cols-[1fr_220px_120px]"
+        }`}
+      >
         <label className="flex flex-col gap-2 text-sm text-foreground">
           <span>搜索</span>
           <input
             type="text"
             name="q"
             defaultValue={q}
-            placeholder={`按${label.singular}标题、名称或 slug 搜索`}
+            placeholder={`按${label.singular}标题、名称、标签或 slug 搜索`}
             className="h-11 rounded-2xl border border-line bg-white px-4 outline-none transition focus:border-brand"
           />
         </label>
+
+        {resource === "content" ? (
+          <label className="flex flex-col gap-2 text-sm text-foreground">
+            <span>内容类型</span>
+            <select
+              name="contentType"
+              defaultValue={contentType}
+              className="h-11 rounded-2xl border border-line bg-white px-4 outline-none transition focus:border-brand"
+            >
+              <option value="">全部类型</option>
+              {contentTypeOptions.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
 
         <label className="flex flex-col gap-2 text-sm text-foreground">
           <span>状态</span>

@@ -1,10 +1,11 @@
 /**
  * 文件说明：该文件实现后台资源管理模块的通用工具函数。
- * 功能说明：统一处理 slug、状态动作映射、发布时间计算和错误消息，保证内容、词条、品牌三类资源行为一致。
+ * 功能说明：统一处理 slug、状态映射、发布时间、前台路径、可疑测试内容识别与通用格式化逻辑。
  *
  * 结构概览：
  *   第一部分：字符串与状态工具
- *   第二部分：时间与错误处理工具
+ *   第二部分：发布时间与日期格式工具
+ *   第三部分：前台路径与运营安全工具
  */
 
 import type { ResourceFormIntent } from "@/features/admin/resources/constants";
@@ -38,12 +39,40 @@ export function resolveWorkflowStatus(
   return statusMap[intent];
 }
 
-export function resolvePublishedAt(
-  nextStatus: WorkflowStatus,
-  currentPublishedAt?: Date | null,
-) {
+export function parseDateTimeInput(value: string) {
+  if (!value.trim()) {
+    return null;
+  }
+
+  const normalized = value.trim();
+  const parsed = new Date(normalized);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+export function formatDateTimeLocalInput(value?: Date | null) {
+  if (!value) {
+    return "";
+  }
+
+  const offsetMinutes = value.getTimezoneOffset();
+  const localDate = new Date(value.getTime() - offsetMinutes * 60 * 1000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+export function resolvePublishedAt(params: {
+  nextStatus: WorkflowStatus;
+  currentPublishedAt?: Date | null;
+  requestedPublishedAt?: Date | null;
+}) {
+  const { nextStatus, currentPublishedAt, requestedPublishedAt } = params;
+
   if (nextStatus === "PUBLISHED") {
-    return currentPublishedAt ?? new Date();
+    return requestedPublishedAt ?? currentPublishedAt ?? new Date();
   }
 
   if (
@@ -97,7 +126,54 @@ export function getErrorMessage(error: unknown) {
 
 export function parseAliases(value: string) {
   return value
-    .split(/[\n,，]/)
+    .split(/[\n,，、]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+export function buildPublicPath(
+  kind: "content" | "term" | "brand",
+  slug: string,
+) {
+  if (!slug) {
+    return null;
+  }
+
+  if (kind === "content") {
+    return `/knowledge/${slug}`;
+  }
+
+  if (kind === "term") {
+    return `/terms/${slug}`;
+  }
+
+  return `/brands/${slug}`;
+}
+
+const suspiciousContentPatterns = [
+  /\?\?\?\?/i,
+  /\bverification\b/i,
+  /\btest\b/i,
+  /\bdemo\b/i,
+  /\btemp\b/i,
+  /\bplaceholder\b/i,
+  /ai verification task/i,
+];
+
+export function getSuspiciousPublishReason(value: string) {
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const matchedPattern = suspiciousContentPatterns.find((pattern) =>
+    pattern.test(normalized),
+  );
+
+  if (!matchedPattern) {
+    return null;
+  }
+
+  return "检测到疑似测试残留内容，当前不允许直接发布，请先修改标题/名称后再发布。";
 }

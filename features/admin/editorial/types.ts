@@ -1,11 +1,11 @@
 /**
  * 文件说明：该文件定义 AI 编辑部模块的共享类型。
- * 功能说明：统一任务表单值、模板结构、结构化输入载荷、列表数据与编辑页数据，供服务层、动作层和页面层复用。
+ * 功能说明：统一任务表单、模板结构、结构化输入、列表筛选与编辑页展示所需的数据结构。
  *
  * 结构概览：
- *   第一部分：模板与输入结构类型
- *   第二部分：任务表单与兼容载荷类型
- *   第三部分：列表与编辑页数据类型
+ *   第一部分：模板与生成器类型
+ *   第二部分：任务表单与列表类型
+ *   第三部分：编辑页数据类型
  */
 
 import type {
@@ -187,6 +187,8 @@ export const emptyAiTaskFormValues: AiTaskFormValues = {
 export type AiTaskListQuery = {
   q?: string;
   status?: AiTaskStatus | "";
+  taskType?: AiTaskType | "";
+  provider?: string;
 };
 
 export type ContentOption = {
@@ -208,6 +210,8 @@ export type AiTaskListItem = {
   createdAt: Date;
   updatedAt: Date;
   finishedAt: Date | null;
+  excerpt: string;
+  generationGoal: string;
   content: {
     id: string;
     title: string;
@@ -220,6 +224,10 @@ export type AiTaskEditorData = {
   contentOptions: ContentOption[];
   templateOptions: PromptTemplateOption[];
   providerId: string | null;
+  templateName: string;
+  targetKind: PromptTemplateTargetKind;
+  structuredInput: PromptTemplateInput;
+  outputJson: unknown;
   createdAt: Date;
   updatedAt: Date;
   finishedAt: Date | null;
