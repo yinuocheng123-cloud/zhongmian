@@ -11,6 +11,7 @@
 import "server-only";
 
 import type { Prisma } from "@prisma/client";
+import { requireAdminSession } from "@/features/admin/auth/session";
 import { prisma } from "@/lib/prisma";
 import { getPromptTemplateOptions } from "@/features/admin/editorial/templates";
 import type {
@@ -138,6 +139,8 @@ async function getSharedCreationOptions(): Promise<AiTaskCreationOptions> {
 }
 
 export async function getAiTaskList(query: AiTaskListQuery) {
+  await requireAdminSession("/admin/ai-editorial");
+
   return safeQuery<AiTaskListItem[]>(
     async () => {
       const items = await prisma.aiTask.findMany({
@@ -189,6 +192,8 @@ export async function getAiTaskList(query: AiTaskListQuery) {
 }
 
 export async function getAiTaskEditorData(id: string) {
+  await requireAdminSession(`/admin/ai-editorial/${id}`);
+
   return safeQuery<AiTaskEditorData | null>(
     async () => {
       const [task, sharedOptions] = await Promise.all([
@@ -271,6 +276,8 @@ export async function getAiTaskEditorData(id: string) {
 }
 
 export async function getAiTaskCreationOptions() {
+  await requireAdminSession("/admin/ai-editorial/new");
+
   const templateOptions = await getPromptTemplateOptions();
 
   if (!process.env.DATABASE_URL) {

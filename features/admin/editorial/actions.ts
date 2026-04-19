@@ -24,6 +24,10 @@ import {
   type AiEditorialIntent,
 } from "@/features/admin/editorial/constants";
 import {
+  getAdminActorName,
+  requireAdminSession,
+} from "@/features/admin/auth/session";
+import {
   getPromptTemplateById,
 } from "@/features/admin/editorial/templates";
 import {
@@ -72,11 +76,6 @@ function ensureDatabaseReady() {
   if (!process.env.DATABASE_URL) {
     throw new Error("未配置 DATABASE_URL，当前无法执行真实 AI 编辑部保存流程。");
   }
-}
-
-function getActorName() {
-  // 当前阶段尚未接入真实权限系统，先统一使用稳定占位身份。
-  return "admin-demo-user";
 }
 
 function resolveNextAiTaskStatus(
@@ -289,6 +288,10 @@ export async function saveAiTaskAction(
   _prevState: AiTaskFormState,
   formData: FormData,
 ): Promise<AiTaskFormState> {
+  await requireAdminSession(
+    taskId ? `/admin/ai-editorial/${taskId}` : "/admin/ai-editorial/new",
+  );
+
   try {
     ensureDatabaseReady();
 
@@ -348,7 +351,7 @@ export async function saveAiTaskAction(
       return buildFieldErrorState("请先修正 AI 任务表单中的必填项。", fieldErrors);
     }
 
-    const actorName = getActorName();
+    const actorName = getAdminActorName();
     const structuredInput: PromptTemplateInput = {
       title,
       topic,

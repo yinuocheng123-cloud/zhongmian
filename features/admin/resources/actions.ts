@@ -22,6 +22,10 @@ import {
   resourceLabels,
   type ResourceFormIntent,
 } from "@/features/admin/resources/constants";
+import {
+  getAdminActorName,
+  requireAdminSession,
+} from "@/features/admin/auth/session";
 import type { ResourceFormState } from "@/features/admin/resources/types";
 import {
   buildWorkflowNote,
@@ -62,11 +66,6 @@ function ensureIntent(formData: FormData): ResourceFormIntent {
   }
 
   return "SAVE";
-}
-
-function getActorName() {
-  // 当前阶段尚未接入真实鉴权，先使用稳定操作者占位，便于后续替换。
-  return "admin-demo-user";
 }
 
 function ensureDatabaseReady() {
@@ -164,6 +163,8 @@ export async function saveContentAction(
   _prevState: ResourceFormState,
   formData: FormData,
 ): Promise<ResourceFormState> {
+  await requireAdminSession(contentId ? `/admin/content/${contentId}` : "/admin/content/new");
+
   try {
     ensureDatabaseReady();
 
@@ -189,7 +190,7 @@ export async function saveContentAction(
       return buildFieldErrorState("请先修正内容表单中的必填项。", fieldErrors);
     }
 
-    const actorName = getActorName();
+    const actorName = getAdminActorName();
 
     const saved = await prisma.$transaction(async (tx) => {
       const isUniqueSlug = await ensureUniqueSlug(
@@ -287,6 +288,8 @@ export async function saveTermAction(
   _prevState: ResourceFormState,
   formData: FormData,
 ): Promise<ResourceFormState> {
+  await requireAdminSession(termId ? `/admin/terms/${termId}` : "/admin/terms/new");
+
   try {
     ensureDatabaseReady();
 
@@ -309,7 +312,7 @@ export async function saveTermAction(
       return buildFieldErrorState("请先修正词条表单中的必填项。", fieldErrors);
     }
 
-    const actorName = getActorName();
+    const actorName = getAdminActorName();
 
     const saved = await prisma.$transaction(async (tx) => {
       const isUniqueSlug = await ensureUniqueSlug(
@@ -400,6 +403,8 @@ export async function saveBrandAction(
   _prevState: ResourceFormState,
   formData: FormData,
 ): Promise<ResourceFormState> {
+  await requireAdminSession(brandId ? `/admin/brands/${brandId}` : "/admin/brands/new");
+
   try {
     ensureDatabaseReady();
 
@@ -424,7 +429,7 @@ export async function saveBrandAction(
       return buildFieldErrorState("请先修正品牌表单中的必填项。", fieldErrors);
     }
 
-    const actorName = getActorName();
+    const actorName = getAdminActorName();
 
     const saved = await prisma.$transaction(async (tx) => {
       const isUniqueSlug = await ensureUniqueSlug(

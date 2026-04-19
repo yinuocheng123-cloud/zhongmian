@@ -11,6 +11,7 @@
 import "server-only";
 
 import type { Prisma, WorkflowStatus } from "@prisma/client";
+import { requireAdminSession } from "@/features/admin/auth/session";
 import { prisma } from "@/lib/prisma";
 import type {
   BrandEditorData,
@@ -141,6 +142,8 @@ function buildBrandSearchFilter(q?: string): Prisma.BrandWhereInput {
 }
 
 export async function getContentList(query: ResourceListQuery) {
+  await requireAdminSession("/admin/content");
+
   return safeQuery<ContentListItem[]>(
     () =>
       prisma.content.findMany({
@@ -164,6 +167,8 @@ export async function getContentList(query: ResourceListQuery) {
 }
 
 export async function getTermList(query: ResourceListQuery) {
+  await requireAdminSession("/admin/terms");
+
   return safeQuery<TermListItem[]>(
     () =>
       prisma.term.findMany({
@@ -187,6 +192,8 @@ export async function getTermList(query: ResourceListQuery) {
 }
 
 export async function getBrandList(query: ResourceListQuery) {
+  await requireAdminSession("/admin/brands");
+
   return safeQuery<BrandListItem[]>(
     () =>
       prisma.brand.findMany({
@@ -211,6 +218,8 @@ export async function getBrandList(query: ResourceListQuery) {
 }
 
 export async function getContentEditorData(id: string) {
+  await requireAdminSession(`/admin/content/${id}`);
+
   return safeQuery<ContentEditorData | null>(
     async () => {
       const item = await prisma.content.findUnique({
@@ -283,6 +292,8 @@ export async function getContentEditorData(id: string) {
 }
 
 export async function getTermEditorData(id: string) {
+  await requireAdminSession(`/admin/terms/${id}`);
+
   return safeQuery<TermEditorData | null>(
     async () => {
       const item = await prisma.term.findUnique({
@@ -333,6 +344,8 @@ export async function getTermEditorData(id: string) {
 }
 
 export async function getBrandEditorData(id: string) {
+  await requireAdminSession(`/admin/brands/${id}`);
+
   return safeQuery<BrandEditorData | null>(
     async () => {
       const item = await prisma.brand.findUnique({
