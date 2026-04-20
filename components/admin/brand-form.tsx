@@ -18,6 +18,7 @@ import {
   AdminTextarea,
 } from "@/components/admin/form-controls";
 import { FormSubmitButton } from "@/components/admin/form-submit-button";
+import { StructuredTextEditor } from "@/components/admin/structured-text-editor";
 import { intentLabels } from "@/features/admin/resources/constants";
 import { saveBrandAction } from "@/features/admin/resources/actions";
 import {
@@ -92,13 +93,15 @@ export function BrandForm({
         error={state.fieldErrors?.summary}
       />
 
-      <AdminTextarea
+      <StructuredTextEditor
         label="详细介绍"
         name="description"
         defaultValue={initialValues.description}
         required
-        rows={8}
+        rows={10}
         error={state.fieldErrors?.description}
+        description="支持从品牌资料、Word 或 WPS 直接粘贴，系统会自动清理冗余样式。"
+        previewTitle="品牌介绍预览"
       />
 
       <div className="grid gap-5 lg:grid-cols-3">

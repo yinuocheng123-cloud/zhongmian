@@ -10,6 +10,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { AdminNotice } from "@/components/admin/admin-notice";
 import {
   AdminCheckboxGroup,
   AdminDateTimeInput,
@@ -17,7 +18,7 @@ import {
   AdminTextarea,
 } from "@/components/admin/form-controls";
 import { FormSubmitButton } from "@/components/admin/form-submit-button";
-import { AdminNotice } from "@/components/admin/admin-notice";
+import { StructuredTextEditor } from "@/components/admin/structured-text-editor";
 import {
   contentTypeOptions,
   intentLabels,
@@ -111,13 +112,15 @@ export function ContentForm({
         error={state.fieldErrors?.summary}
       />
 
-      <AdminTextarea
+      <StructuredTextEditor
         label="正文"
         name="body"
         defaultValue={initialValues.body}
         required
         rows={14}
         error={state.fieldErrors?.body}
+        description="支持从 Word / WPS 直接粘贴，系统会自动保留标题、段落、列表和强调结构。"
+        previewTitle="正文预览"
       />
 
       <AdminCheckboxGroup

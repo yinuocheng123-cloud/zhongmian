@@ -1,6 +1,6 @@
 /**
  * 文件说明：该文件实现后台内容列表页。
- * 功能说明：展示真实 Content 数据，支持搜索、状态筛选、类型筛选、前台查看与快速发布流转动作。
+ * 功能说明：展示真实 Content 数据，支持搜索、状态筛选、类型筛选、批量流转与前台查看。
  *
  * 结构概览：
  *   第一部分：依赖导入与查询参数工具
@@ -12,6 +12,7 @@ import { AdminNotice } from "@/components/admin/admin-notice";
 import { ResourceStatusBadge } from "@/components/admin/resource-status-badge";
 import { ResourceToolbar } from "@/components/admin/resource-toolbar";
 import {
+  changeBulkResourceWorkflowStatusAction,
   changeResourceWorkflowStatusAction,
 } from "@/features/admin/resources/actions";
 import { contentTypeOptions } from "@/features/admin/resources/constants";
@@ -25,6 +26,19 @@ function getSingleParam(searchParams: SearchParams, key: string) {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
+function buildListPath(params: Record<string, string>) {
+  const searchParams = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) {
+      searchParams.set(key, value);
+    }
+  });
+
+  const queryString = searchParams.toString();
+  return queryString ? `/admin/content?${queryString}` : "/admin/content";
+}
+
 export default async function AdminContentPage({
   searchParams,
 }: {
@@ -36,6 +50,8 @@ export default async function AdminContentPage({
   const contentType = getSingleParam(resolvedSearchParams, "contentType");
   const notice = getSingleParam(resolvedSearchParams, "notice");
   const errorMessage = getSingleParam(resolvedSearchParams, "error");
+  const currentPath = buildListPath({ q, status, contentType });
+  const bulkFormId = "admin-content-bulk-form";
   const result = await getContentList({
     q,
     status: status as never,
@@ -67,8 +83,57 @@ export default async function AdminContentPage({
         />
       ) : null}
 
-      <section className="overflow-hidden rounded-[28px] border border-line bg-white">
-        <div className="grid grid-cols-[1.6fr_0.8fr_1fr_0.8fr_0.8fr_1.2fr] gap-4 border-b border-line bg-surface-soft px-6 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+      <form
+        id={bulkFormId}
+        action={changeBulkResourceWorkflowStatusAction.bind(
+          null,
+          "content",
+          currentPath,
+        )}
+        className="space-y-6"
+      >
+        {result.data.length > 0 ? (
+          <div className="rounded-[28px] border border-line bg-surface-soft p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground">批量运营动作</h3>
+                <p className="text-sm leading-7 text-muted">
+                  勾选当前页内容后，可直接批量提交审核、发布或下线，减少重复进入详情页的操作成本。
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  name="intent"
+                  value="SUBMIT_REVIEW"
+                  className="rounded-2xl border border-line bg-white px-4 py-3 text-sm font-medium text-foreground transition hover:border-brand hover:text-brand"
+                >
+                  批量提审
+                </button>
+                <button
+                  type="submit"
+                  name="intent"
+                  value="PUBLISH"
+                  className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 transition hover:border-emerald-300"
+                >
+                  批量发布
+                </button>
+                <button
+                  type="submit"
+                  name="intent"
+                  value="UNPUBLISH"
+                  className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 transition hover:border-rose-300"
+                >
+                  批量下线
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <section className="overflow-hidden rounded-[28px] border border-line bg-white">
+        <div className="grid grid-cols-[44px_1.5fr_0.8fr_1fr_0.8fr_0.8fr_1.2fr] gap-4 border-b border-line bg-surface-soft px-6 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+          <span>选择</span>
           <span>内容</span>
           <span>类型</span>
           <span>分类 / 标签</span>
@@ -82,8 +147,18 @@ export default async function AdminContentPage({
             {result.data.map((item) => (
               <div
                 key={item.id}
-                className="grid grid-cols-[1.6fr_0.8fr_1fr_0.8fr_0.8fr_1.2fr] gap-4 px-6 py-5 text-sm text-foreground"
+                className="grid grid-cols-[44px_1.5fr_0.8fr_1fr_0.8fr_0.8fr_1.2fr] gap-4 px-6 py-5 text-sm text-foreground"
               >
+                <div className="pt-1">
+                  <input
+                    type="checkbox"
+                    name="resourceIds"
+                    value={item.id}
+                    className="h-4 w-4 rounded border-line text-brand focus:ring-brand"
+                    aria-label={`选择内容 ${item.title}`}
+                  />
+                </div>
+
                 <div className="min-w-0">
                   <Link
                     href={`/admin/content/${item.id}`}
@@ -139,60 +214,51 @@ export default async function AdminContentPage({
                   ) : null}
 
                   {item.workflowStatus !== "PENDING_REVIEW" ? (
-                    <form
-                      action={changeResourceWorkflowStatusAction.bind(
+                    <button
+                      type="submit"
+                      formAction={changeResourceWorkflowStatusAction.bind(
                         null,
                         "content",
                         item.id,
                         "SUBMIT_REVIEW",
-                        "/admin/content",
+                        currentPath,
                       )}
+                      className="inline-flex rounded-xl border border-line px-3 py-2 text-xs font-medium text-foreground transition hover:border-brand hover:text-brand"
                     >
-                      <button
-                        type="submit"
-                        className="inline-flex rounded-xl border border-line px-3 py-2 text-xs font-medium text-foreground transition hover:border-brand hover:text-brand"
-                      >
-                        提审
-                      </button>
-                    </form>
+                      提审
+                    </button>
                   ) : null}
 
                   {item.workflowStatus !== "PUBLISHED" ? (
-                    <form
-                      action={changeResourceWorkflowStatusAction.bind(
+                    <button
+                      type="submit"
+                      formAction={changeResourceWorkflowStatusAction.bind(
                         null,
                         "content",
                         item.id,
                         "PUBLISH",
-                        "/admin/content",
+                        currentPath,
                       )}
+                      className="inline-flex rounded-xl border border-emerald-200 px-3 py-2 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
                     >
-                      <button
-                        type="submit"
-                        className="inline-flex rounded-xl border border-emerald-200 px-3 py-2 text-xs font-medium text-emerald-700 transition hover:bg-emerald-50"
-                      >
-                        发布
-                      </button>
-                    </form>
+                      发布
+                    </button>
                   ) : null}
 
                   {item.workflowStatus === "PUBLISHED" ? (
-                    <form
-                      action={changeResourceWorkflowStatusAction.bind(
+                    <button
+                      type="submit"
+                      formAction={changeResourceWorkflowStatusAction.bind(
                         null,
                         "content",
                         item.id,
                         "UNPUBLISH",
-                        "/admin/content",
+                        currentPath,
                       )}
+                      className="inline-flex rounded-xl border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
                     >
-                      <button
-                        type="submit"
-                        className="inline-flex rounded-xl border border-rose-200 px-3 py-2 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
-                      >
-                        下线
-                      </button>
-                    </form>
+                      下线
+                    </button>
                   ) : null}
                 </div>
               </div>
@@ -203,7 +269,8 @@ export default async function AdminContentPage({
             当前还没有可展示的内容数据，可以先新建一条内容跑通后台流程。
           </div>
         )}
-      </section>
+        </section>
+      </form>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 /**
  * 文件说明：该文件实现中眠网前台的知识内容详情页。
- * 功能说明：根据 slug 读取已发布的 Content 数据，并展示标题、摘要、正文、分类标签与延伸入口。
+ * 功能说明：根据 slug 读取已发布的 Content 数据，并展示标题、摘要、正文、分类标签与关联入口。
  *
  * 结构概览：
  *   第一部分：元数据与公共格式化函数
@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SectionHeading } from "@/components/shared/section-heading";
+import { StructuredTextContent } from "@/components/shared/structured-text-content";
 import { getPublishedContentDetail } from "@/features/site/details/server";
 
 export const dynamic = "force-dynamic";
@@ -32,26 +33,6 @@ function formatDate(date: Date | null) {
   }).format(date);
 }
 
-function renderParagraphs(text: string | null) {
-  if (!text?.trim()) {
-    return (
-      <p className="text-sm leading-7 text-muted sm:text-base">
-        当前内容尚未补充正文，可继续通过后台编辑器完善内容结构与详细论述。
-      </p>
-    );
-  }
-
-  return text
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .map((paragraph, index) => (
-      <p key={`${paragraph.slice(0, 16)}-${index}`} className="text-sm leading-8 text-foreground/86 sm:text-base">
-        {paragraph}
-      </p>
-    ));
-}
-
 function DatabaseUnavailableState({ message }: { message?: string }) {
   return (
     <div className="portal-shell">
@@ -64,7 +45,8 @@ function DatabaseUnavailableState({ message }: { message?: string }) {
             当前无法读取前台知识详情数据
           </h1>
           <p className="text-sm leading-7 text-muted sm:text-base">
-            {message ?? "数据库尚未就绪，因此当前页面不会回退到 demo 数据。配置数据库并导入种子数据后，此页面会直接展示后台已发布内容。"}
+            {message ??
+              "数据库尚未就绪，因此当前页面不会回退到 demo 数据。连接数据库并导入种子数据后，此页面会直接展示后台已发布内容。"}
           </p>
         </div>
       </section>
@@ -153,7 +135,12 @@ export default async function KnowledgeDetailPage({ params }: PageProps) {
             title="睡眠知识正文"
             description="这一部分验证后台录入的正文内容已经可以在前台真实渲染。"
           />
-          <div className="mt-8 space-y-5">{renderParagraphs(content.body)}</div>
+          <div className="mt-8">
+            <StructuredTextContent
+              value={content.body}
+              emptyText="当前内容尚未补充正文，可继续通过后台编辑器完善内容结构与详细说明。"
+            />
+          </div>
         </article>
 
         <aside className="space-y-6">
@@ -263,7 +250,7 @@ export default async function KnowledgeDetailPage({ params }: PageProps) {
         <SectionHeading
           eyebrow="相关推荐"
           title="从同一知识主题继续延伸"
-          description="这一层目前先验证真实关系推荐位是否打通，后续再继续细化专题与相关算法。"
+          description="这一层目前先验证真实关系推荐位是否打通，后续再继续细化专题推荐算法。"
         />
         <div className="mt-8 portal-grid lg:grid-cols-3">
           {content.relatedContents.length > 0 ? (

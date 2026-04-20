@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SectionHeading } from "@/components/shared/section-heading";
+import { StructuredTextContent } from "@/components/shared/structured-text-content";
 import { getPublishedTermDetail } from "@/features/site/details/server";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +41,8 @@ function DatabaseUnavailableState({ message }: { message?: string }) {
             当前无法读取真实词条详情数据
           </h1>
           <p className="text-sm leading-7 text-muted sm:text-base">
-            {message ?? "数据库尚未就绪，因此词条页不会回退到 demo 数据。连接数据库并导入种子数据后，这里会直接读取后台已发布词条。"}
+            {message ??
+              "数据库尚未就绪，因此词条页不会回退到 demo 数据。连接数据库并导入种子数据后，这里会直接读取后台已发布词条。"}
           </p>
         </div>
       </section>
@@ -191,20 +193,18 @@ export default async function TermDetailPage({ params }: PageProps) {
               <h2 className="font-serif text-2xl font-semibold text-foreground">
                 详细解释
               </h2>
-              <p className="text-sm leading-8 text-foreground/86 sm:text-base">
-                {term.definition}
-              </p>
+              <StructuredTextContent value={term.definition} className="space-y-4" />
             </div>
 
             <div className="space-y-4">
               <h2 className="font-serif text-2xl font-semibold text-foreground">
                 延伸说明
               </h2>
-              <p className="text-sm leading-8 text-foreground/86 sm:text-base">
-                {term.body?.trim()
-                  ? term.body
-                  : "当前词条尚未补充延伸说明，后续可以继续从诊断、设备、标准或人群场景等维度补充。"}
-              </p>
+              <StructuredTextContent
+                value={term.body}
+                emptyText="当前词条尚未补充延伸说明，后续可以继续从诊断、设备、标准或人群场景等维度补充。"
+                className="space-y-4"
+              />
             </div>
           </div>
         </article>

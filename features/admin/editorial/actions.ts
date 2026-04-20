@@ -18,6 +18,7 @@ import {
   type Prisma,
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 import {
   aiEditorialIntentLabels,
@@ -483,6 +484,10 @@ export async function saveAiTaskAction(
       )}`,
     );
   } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
     if (
       typeof error === "object" &&
       error !== null &&

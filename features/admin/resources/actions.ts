@@ -16,6 +16,7 @@ import {
   type WorkflowStatus,
 } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { redirect } from "next/navigation";
 import {
   intentLabels,
@@ -30,6 +31,7 @@ import {
 import type { ResourceFormState } from "@/features/admin/resources/types";
 import {
   buildWorkflowNote,
+  buildPublicPath,
   getErrorMessage,
   getSuspiciousPublishReason,
   parseAliases,
@@ -186,10 +188,48 @@ function buildStatusActionErrorRedirect(nextPath: string, message: string) {
   return `${nextPath}?error=${encodeURIComponent(message)}`;
 }
 
-function revalidateAdminResourcePaths(kind: ResourceKind, id: string) {
+type StatusMutationIntent = Extract<
+  ResourceFormIntent,
+  "SAVE_DRAFT" | "SUBMIT_REVIEW" | "PUBLISH" | "UNPUBLISH"
+>;
+
+function ensureStatusMutationIntent(value: FormDataEntryValue | null) {
+  if (
+    value === "SAVE_DRAFT" ||
+    value === "SUBMIT_REVIEW" ||
+    value === "PUBLISH" ||
+    value === "UNPUBLISH"
+  ) {
+    return value;
+  }
+
+  return null;
+}
+
+function revalidateResourcePaths(kind: ResourceKind, id: string, slug?: string | null) {
   revalidatePath("/admin");
   revalidatePath(resourceLabels[kind].listPath);
   revalidatePath(`${resourceLabels[kind].listPath}/${id}`);
+
+  revalidatePath("/");
+
+  if (kind === "content") {
+    revalidatePath("/knowledge");
+  }
+
+  if (kind === "term") {
+    revalidatePath("/terms");
+  }
+
+  if (kind === "brand") {
+    revalidatePath("/brands");
+  }
+
+  const publicPath = slug ? buildPublicPath(kind, slug) : null;
+
+  if (publicPath) {
+    revalidatePath(publicPath);
+  }
 }
 
 type ContentSavePayload = {
@@ -596,11 +636,15 @@ export async function saveContentAction(
       intent,
     });
 
-    revalidateAdminResourcePaths("content", saved.id);
+    revalidateResourcePaths("content", saved.id, saved.slug);
     redirect(
       `/admin/content/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
     );
   } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
     if (
       typeof error === "object" &&
       error !== null &&
@@ -662,11 +706,15 @@ export async function saveTermAction(
       intent,
     });
 
-    revalidateAdminResourcePaths("term", saved.id);
+    revalidateResourcePaths("term", saved.id, saved.slug);
     redirect(
       `/admin/terms/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
     );
   } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
     if (
       typeof error === "object" &&
       error !== null &&
@@ -733,11 +781,15 @@ export async function saveBrandAction(
       intent,
     });
 
-    revalidateAdminResourcePaths("brand", saved.id);
+    revalidateResourcePaths("brand", saved.id, saved.slug);
     redirect(
       `/admin/brands/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
     );
   } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
     if (
       typeof error === "object" &&
       error !== null &&
@@ -754,7 +806,7 @@ export async function saveBrandAction(
 async function updateResourceWorkflowStatus(
   kind: ResourceKind,
   resourceId: string,
-  intent: Extract<ResourceFormIntent, "SAVE_DRAFT" | "SUBMIT_REVIEW" | "PUBLISH" | "UNPUBLISH">,
+  intent: StatusMutationIntent,
 ) {
   const actorName = getAdminActorName();
 
@@ -764,6 +816,7 @@ async function updateResourceWorkflowStatus(
         where: { id: resourceId },
         select: {
           id: true,
+          slug: true,
           title: true,
           summary: true,
           body: true,
@@ -797,6 +850,7 @@ async function updateResourceWorkflowStatus(
         },
         select: {
           id: true,
+          slug: true,
           title: true,
           summary: true,
           body: true,
@@ -822,7 +876,10 @@ async function updateResourceWorkflowStatus(
         changeNote: `列表页快速操作：${intentLabels[intent]}`,
       });
 
-      return updated.id;
+      return {
+        id: updated.id,
+        slug: updated.slug,
+      };
     }
 
     if (kind === "term") {
@@ -830,6 +887,7 @@ async function updateResourceWorkflowStatus(
         where: { id: resourceId },
         select: {
           id: true,
+          slug: true,
           name: true,
           workflowStatus: true,
           publishedAt: true,
@@ -861,6 +919,7 @@ async function updateResourceWorkflowStatus(
         },
         select: {
           id: true,
+          slug: true,
           workflowStatus: true,
         },
       });
@@ -874,13 +933,17 @@ async function updateResourceWorkflowStatus(
         termId: updated.id,
       });
 
-      return updated.id;
+      return {
+        id: updated.id,
+        slug: updated.slug,
+      };
     }
 
     const existing = await tx.brand.findUnique({
       where: { id: resourceId },
       select: {
         id: true,
+        slug: true,
         name: true,
         workflowStatus: true,
         publishedAt: true,
@@ -912,6 +975,7 @@ async function updateResourceWorkflowStatus(
       },
       select: {
         id: true,
+        slug: true,
         workflowStatus: true,
       },
     });
@@ -925,23 +989,68 @@ async function updateResourceWorkflowStatus(
       brandId: updated.id,
     });
 
-    return updated.id;
+    return {
+      id: updated.id,
+      slug: updated.slug,
+    };
   });
 }
 
 export async function changeResourceWorkflowStatusAction(
   kind: ResourceKind,
   resourceId: string,
-  intent: Extract<ResourceFormIntent, "SAVE_DRAFT" | "SUBMIT_REVIEW" | "PUBLISH" | "UNPUBLISH">,
+  intent: StatusMutationIntent,
   nextPath: string,
 ) {
   await requireAdminSession(nextPath);
 
   try {
     ensureDatabaseReady();
-    const savedId = await updateResourceWorkflowStatus(kind, resourceId, intent);
-    revalidateAdminResourcePaths(kind, savedId);
+    const savedItem = await updateResourceWorkflowStatus(kind, resourceId, intent);
+    revalidateResourcePaths(kind, savedItem.id, savedItem.slug);
     redirect(buildStatusActionRedirect(nextPath, intentLabels[intent]));
+  } catch (error) {
+    redirect(buildStatusActionErrorRedirect(nextPath, getErrorMessage(error)));
+  }
+}
+
+export async function changeBulkResourceWorkflowStatusAction(
+  kind: ResourceKind,
+  nextPath: string,
+  formData: FormData,
+) {
+  await requireAdminSession(nextPath);
+
+  try {
+    ensureDatabaseReady();
+
+    const intent = ensureStatusMutationIntent(formData.get("intent"));
+    const resourceIds = [...new Set(getSelectedIds(formData, "resourceIds"))];
+
+    if (!intent) {
+      throw new Error("当前批量动作无效，请重新选择后再试。");
+    }
+
+    if (resourceIds.length === 0) {
+      throw new Error("请先勾选至少一条内容后再执行批量操作。");
+    }
+
+    const updatedItems = [];
+
+    for (const resourceId of resourceIds) {
+      updatedItems.push(await updateResourceWorkflowStatus(kind, resourceId, intent));
+    }
+
+    updatedItems.forEach((item) => {
+      revalidateResourcePaths(kind, item.id, item.slug);
+    });
+
+    redirect(
+      buildStatusActionRedirect(
+        nextPath,
+        `已批量执行：${intentLabels[intent]}（${updatedItems.length} 项）`,
+      ),
+    );
   } catch (error) {
     redirect(buildStatusActionErrorRedirect(nextPath, getErrorMessage(error)));
   }

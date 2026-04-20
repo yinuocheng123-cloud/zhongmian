@@ -18,6 +18,7 @@ import {
   AdminTextarea,
 } from "@/components/admin/form-controls";
 import { FormSubmitButton } from "@/components/admin/form-submit-button";
+import { StructuredTextEditor } from "@/components/admin/structured-text-editor";
 import { intentLabels } from "@/features/admin/resources/constants";
 import { saveTermAction } from "@/features/admin/resources/actions";
 import {
@@ -91,21 +92,24 @@ export function TermForm({
         description="用于列表页、卡片和词条精选摘要。"
       />
 
-      <AdminTextarea
+      <StructuredTextEditor
         label="标准定义"
         name="definition"
         defaultValue={initialValues.definition}
         required
-        rows={5}
+        rows={7}
         error={state.fieldErrors?.definition}
+        description="支持从 Word / WPS 直接粘贴，并自动整理为定义、解释和分点说明结构。"
+        previewTitle="定义预览"
       />
 
-      <AdminTextarea
+      <StructuredTextEditor
         label="详细解释"
         name="body"
         defaultValue={initialValues.body}
         rows={10}
-        description="用于承载词条的详细背景、相关场景与延伸解释。"
+        description="支持从 Word / WPS 直接粘贴，用于承载词条的详细背景、相关场景与延伸解释。"
+        previewTitle="详细解释预览"
       />
 
       <AdminCheckboxGroup

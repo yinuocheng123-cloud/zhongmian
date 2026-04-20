@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SectionHeading } from "@/components/shared/section-heading";
+import { StructuredTextContent } from "@/components/shared/structured-text-content";
 import { getPublishedBrandDetail } from "@/features/site/details/server";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +41,8 @@ function DatabaseUnavailableState({ message }: { message?: string }) {
             当前无法读取真实品牌详情数据
           </h1>
           <p className="text-sm leading-7 text-muted sm:text-base">
-            {message ?? "数据库尚未就绪，因此品牌页不会回退到 demo 数据。连接数据库并导入种子数据后，这里会直接读取后台已发布品牌。"}
+            {message ??
+              "数据库尚未就绪，因此品牌页不会回退到 demo 数据。连接数据库并导入种子数据后，这里会直接读取后台已发布品牌。"}
           </p>
         </div>
       </section>
@@ -238,11 +240,11 @@ export default async function BrandDetailPage({ params }: PageProps) {
               <h2 className="font-serif text-2xl font-semibold text-foreground">
                 详细介绍
               </h2>
-              <p className="text-sm leading-8 text-foreground/86 sm:text-base">
-                {brand.description?.trim()
-                  ? brand.description
-                  : "当前品牌尚未补充详细介绍，后续可以继续补充产品方向、服务能力、行业合作与标准关联信息。"}
-              </p>
+              <StructuredTextContent
+                value={brand.description}
+                emptyText="当前品牌尚未补充详细介绍，后续可以继续补充产品方向、服务能力、行业合作与标准关联信息。"
+                className="space-y-4"
+              />
             </div>
           </div>
         </article>
