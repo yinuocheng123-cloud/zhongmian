@@ -11,6 +11,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
+  ListActiveFilters,
   ListFilterGroup,
   ListPagination,
 } from "@/components/site/list-controls";
@@ -262,6 +263,16 @@ export default async function BrandsPage({ searchParams }: PageProps) {
           description="卡片以企业名片结构呈现，优先突出品牌分类、地区、主营方向与行业参考属性。"
         />
 
+        <ListActiveFilters
+          basePath="/brands"
+          searchParams={currentParams}
+          labels={{
+            q: "搜索",
+            category: "分类",
+            tag: "标签",
+          }}
+        />
+
         {items.length > 0 ? (
           <>
             <div className="portal-grid lg:grid-cols-3">
@@ -272,6 +283,9 @@ export default async function BrandsPage({ searchParams }: PageProps) {
                   className="portal-card rounded-[28px] p-7 transition hover:-translate-y-0.5 hover:border-brand"
                 >
                   <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-line bg-surface-soft px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-foreground/80">
+                      行业名录
+                    </span>
                     {item.categories.slice(0, 1).map((category) => (
                       <span
                         key={category.slug}
@@ -320,7 +334,7 @@ export default async function BrandsPage({ searchParams }: PageProps) {
         ) : (
           <div className="portal-card rounded-[28px] border border-dashed border-line p-8 text-sm leading-7 text-muted">
             {query || activeCategory || activeTag
-              ? "当前筛选条件下没有找到已发布品牌。你可以放宽筛选条件，或先在后台发布对应品牌。"
+              ? "当前筛选条件下没有找到已发布品牌。你可以清空筛选后重新查看，或先在后台发布对应品牌。"
               : "当前还没有可公开访问的睡眠品牌。等后台发布首批品牌后，这里会直接形成前台品牌入口。"}
           </div>
         )}

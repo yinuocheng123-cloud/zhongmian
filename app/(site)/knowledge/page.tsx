@@ -11,6 +11,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
+  ListActiveFilters,
   ListFilterGroup,
   ListPagination,
 } from "@/components/site/list-controls";
@@ -285,6 +286,16 @@ export default async function KnowledgePage({ searchParams }: PageProps) {
           description="这里展示的是经过发布流转后的真实 Content 数据，卡片保留问题与知识入口感，而不是普通文章流。"
         />
 
+        <ListActiveFilters
+          basePath="/knowledge"
+          searchParams={currentParams}
+          labels={{
+            q: "搜索",
+            category: "分类",
+            tag: "标签",
+          }}
+        />
+
         {items.length > 0 ? (
           <>
             <div className="portal-grid lg:grid-cols-3">
@@ -350,7 +361,7 @@ export default async function KnowledgePage({ searchParams }: PageProps) {
         ) : (
           <div className="portal-card rounded-[28px] border border-dashed border-line p-8 text-sm leading-7 text-muted">
             {query || activeCategory || activeTag
-              ? "当前筛选条件下没有找到已发布知识内容。你可以放宽筛选条件，或先在后台发布对应内容。"
+              ? "当前筛选条件下没有找到已发布知识内容。你可以清空筛选后重新查看，或先在后台发布对应内容。"
               : "当前还没有可公开访问的睡眠知识内容。等后台发布首批知识内容后，这里会直接形成前台知识入口。"}
           </div>
         )}

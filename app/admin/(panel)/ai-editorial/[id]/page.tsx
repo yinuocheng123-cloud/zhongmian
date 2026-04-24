@@ -13,6 +13,7 @@ import { notFound } from "next/navigation";
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { AiTaskForm } from "@/components/admin/ai-task-form";
 import { AiTaskStatusBadge } from "@/components/admin/ai-task-status-badge";
+import { getAiProviderLabel } from "@/features/admin/editorial/constants";
 import { getAiTaskEditorData } from "@/features/admin/editorial/server";
 import { workflowStatusLabels } from "@/features/admin/resources/constants";
 import { formatDateTime } from "@/features/admin/resources/utils";
@@ -122,7 +123,7 @@ export default async function AdminAiEditorialDetailPage({
             <div className="rounded-2xl border border-line bg-surface-soft px-4 py-4">
               <p className="text-sm text-muted">Provider</p>
               <p className="mt-2 text-sm font-medium text-foreground">
-                {data.providerId ?? "尚未执行生成"}
+                {getAiProviderLabel(data.providerId)}
               </p>
             </div>
 
@@ -151,6 +152,9 @@ export default async function AdminAiEditorialDetailPage({
             <h4 className="text-sm font-semibold text-foreground">
               关联 Content 草稿
             </h4>
+            <p className="mt-2 text-sm leading-7 text-muted">
+              这里直接展示这条任务是否已经进入内容生产链路，方便快速判断“任务、生成结果、内容草稿”是否已经接上。
+            </p>
 
             {data.content ? (
               <div className="mt-4 space-y-3 text-sm leading-7 text-muted">
@@ -172,7 +176,7 @@ export default async function AdminAiEditorialDetailPage({
                     href={`/admin/content/${data.content.id}`}
                     className="inline-flex rounded-2xl border border-line px-4 py-2 font-medium text-foreground transition hover:border-brand hover:text-brand"
                   >
-                    进入内容编辑页
+                    进入 Content 草稿
                   </Link>
                   {data.content.workflowStatus === "PUBLISHED" ? (
                     <Link

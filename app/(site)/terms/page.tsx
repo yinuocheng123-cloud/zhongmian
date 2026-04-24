@@ -11,6 +11,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
+  ListActiveFilters,
   ListFilterGroup,
   ListPagination,
 } from "@/components/site/list-controls";
@@ -209,6 +210,16 @@ export default async function TermsPage({ searchParams }: PageProps) {
           description="每条词条都以定义、概念和结构化入口的方式呈现，避免词库页退回普通文章列表。"
         />
 
+        <ListActiveFilters
+          basePath="/terms"
+          searchParams={currentParams}
+          labels={{
+            q: "搜索",
+            category: "分类",
+            tag: "标签",
+          }}
+        />
+
         {items.length > 0 ? (
           <>
             <div className="portal-grid lg:grid-cols-3">
@@ -219,6 +230,9 @@ export default async function TermsPage({ searchParams }: PageProps) {
                   className="portal-card rounded-[28px] p-7 transition hover:-translate-y-0.5 hover:border-brand"
                 >
                   <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-line bg-surface-soft px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-foreground/80">
+                      术语节点
+                    </span>
                     {item.categories.slice(0, 1).map((category) => (
                       <span
                         key={category.slug}
@@ -262,7 +276,7 @@ export default async function TermsPage({ searchParams }: PageProps) {
         ) : (
           <div className="portal-card rounded-[28px] border border-dashed border-line p-8 text-sm leading-7 text-muted">
             {query || activeCategory || activeTag
-              ? "当前筛选条件下没有找到已发布词条。你可以放宽筛选条件，或先在后台发布对应词条。"
+              ? "当前筛选条件下没有找到已发布词条。你可以清空筛选后重新查看，或先在后台发布对应词条。"
               : "当前还没有可公开访问的睡眠词条。等后台发布首批词条后，这里会直接形成前台词库入口。"}
           </div>
         )}

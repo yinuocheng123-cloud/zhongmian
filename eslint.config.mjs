@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // 交付记录、实验产物与临时回归输出不参与代码 lint。
+    "custom/**",
+    "test-results/**",
+    ".next-dev*.log",
   ]),
 ]);
 

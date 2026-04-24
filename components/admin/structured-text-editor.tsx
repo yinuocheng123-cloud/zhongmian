@@ -1,17 +1,17 @@
 /**
  * 文件说明：该文件实现后台结构化文本编辑器。
- * 功能说明：负责提供长文本编辑、Word/WPS 粘贴清洗、基础格式快捷操作与实时预览。
+ * 功能说明：负责长文本编辑、Word/WPS 粘贴清洗、基础格式快捷操作、清理格式与实时预览。
  *
  * 结构概览：
  *   第一部分：粘贴内容清洗与结构化序列化
- *   第二部分：编辑器光标与文本插入工具
+ *   第二部分：光标插入、包裹和格式整理工具
  *   第三部分：结构化文本编辑器组件
  */
 
 "use client";
 
-import type { ClipboardEvent } from "react";
-import { useRef, useState } from "react";
+import type { ClipboardEvent, MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { StructuredTextContent } from "@/components/shared/structured-text-content";
 
 type StructuredTextEditorProps = {
@@ -72,7 +72,12 @@ function serializeNode(node: Node): string {
     return childText.trim() ? `## ${childText.trim()}\n\n` : "";
   }
 
-  if (tagName === "h3" || tagName === "h4" || tagName === "h5" || tagName === "h6") {
+  if (
+    tagName === "h3" ||
+    tagName === "h4" ||
+    tagName === "h5" ||
+    tagName === "h6"
+  ) {
     return childText.trim() ? `### ${childText.trim()}\n\n` : "";
   }
 
@@ -141,6 +146,10 @@ function normalizePastedHtml(html: string) {
   return collapseExtraBreaks(serialized);
 }
 
+function normalizePlainTextPaste(text: string) {
+  return collapseExtraBreaks(normalizeTextValue(text));
+}
+
 export function StructuredTextEditor({
   label,
   name,
@@ -154,6 +163,25 @@ export function StructuredTextEditor({
 }: StructuredTextEditorProps) {
   const [value, setValue] = useState(defaultValue);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const normalizedInitialValue = useMemo(
+    () => normalizePlainTextPaste(defaultValue),
+    [defaultValue],
+  );
+  const isDirty = normalizePlainTextPaste(value) !== normalizedInitialValue;
+
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!isDirty) {
+        return;
+      }
+
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
 
   function updateValue(nextValue: string, selectionStart?: number, selectionEnd?: number) {
     setValue(nextValue);
@@ -184,8 +212,7 @@ export function StructuredTextEditor({
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const nextValue =
-      value.slice(0, start) + insertedText + value.slice(end);
+    const nextValue = value.slice(0, start) + insertedText + value.slice(end);
     const nextCursor = start + insertedText.length;
 
     updateValue(nextValue, nextCursor, nextCursor);
@@ -236,21 +263,13 @@ export function StructuredTextEditor({
     updateValue(nextValue, selectionStart, selectionStart + nextBlock.length);
   }
 
-  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
-    const html = event.clipboardData.getData("text/html");
-
-    if (!html.trim()) {
-      return;
-    }
-
-    event.preventDefault();
-    const normalized = normalizePastedHtml(html);
-
+  function insertNormalizedContent(normalized: string) {
     if (!normalized) {
       return;
     }
 
     const textarea = textareaRef.current;
+
     if (!textarea) {
       setValue((currentValue) => `${currentValue}\n\n${normalized}`.trim());
       return;
@@ -265,6 +284,26 @@ export function StructuredTextEditor({
     const nextCursor = start + nextText.length;
 
     updateValue(nextValue, nextCursor, nextCursor);
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const html = event.clipboardData.getData("text/html");
+    const plainText = event.clipboardData.getData("text/plain");
+    const normalized = html.trim()
+      ? normalizePastedHtml(html)
+      : normalizePlainTextPaste(plainText);
+
+    if (!normalized) {
+      return;
+    }
+
+    event.preventDefault();
+    insertNormalizedContent(normalized);
+  }
+
+  function handleCleanFormatting(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    updateValue(normalizePlainTextPaste(value));
   }
 
   return (
@@ -318,6 +357,13 @@ export function StructuredTextEditor({
           >
             分段
           </button>
+          <button
+            type="button"
+            onClick={handleCleanFormatting}
+            className="rounded-xl border border-line px-3 py-2 text-xs font-medium text-foreground transition hover:border-brand hover:text-brand"
+          >
+            清理格式
+          </button>
         </div>
 
         <textarea
@@ -335,7 +381,12 @@ export function StructuredTextEditor({
 
       <span className="text-xs text-muted">
         {description ??
-          "支持从 Word / WPS 直接粘贴，系统会尽量保留标题、段落、列表、加粗和斜体，并自动清理冗余样式。"}
+          "支持从 Word / WPS 直接粘贴，系统会尽量保留标题、段落、列表、加粗和斜体，并自动清理冗余格式。"}
+      </span>
+      <span className="text-xs text-muted">
+        {isDirty
+          ? "当前内容尚未保存，直接离开页面会触发浏览器提醒。"
+          : "当前内容已与页面初始值保持一致。"}
       </span>
 
       {error ? <span className="text-xs text-rose-600">{error}</span> : null}

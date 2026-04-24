@@ -11,7 +11,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { BrandForm } from "@/components/admin/brand-form";
+import { FormSubmitButton } from "@/components/admin/form-submit-button";
 import { ResourceStatusBadge } from "@/components/admin/resource-status-badge";
+import { deleteResourceAction } from "@/features/admin/resources/actions";
 import { workflowStatusLabels } from "@/features/admin/resources/constants";
 import { getBrandEditorData } from "@/features/admin/resources/server";
 import { formatDateTime } from "@/features/admin/resources/utils";
@@ -52,6 +54,11 @@ export default async function AdminBrandDetailPage({
       />
     );
   }
+
+  const canDelete =
+    result.data.formValues.workflowStatus === "DRAFT" ||
+    result.data.formValues.workflowStatus === "OFFLINE";
+  const deleteAction = deleteResourceAction.bind(null, "brand", id, "/admin/brands");
 
   return (
     <div className="space-y-6">
@@ -149,6 +156,36 @@ export default async function AdminBrandDetailPage({
             <p>只有 PUBLISHED 的品牌才会在前台品牌库和品牌详情页公开可见。</p>
           </div>
         </section>
+      </section>
+
+      <section className="rounded-[28px] border border-rose-200 bg-rose-50/60 p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <h3 className="font-serif text-xl font-semibold text-foreground">
+              删除品牌
+            </h3>
+            <p className="text-sm leading-7 text-muted">
+              仅允许删除草稿或已下线品牌。删除后会同步清理该品牌的流程记录和 AI 挂接，避免测试稿或重复收录长期残留。
+            </p>
+          </div>
+
+          {canDelete ? (
+            <form action={deleteAction}>
+              <FormSubmitButton
+                intent="DELETE"
+                label="删除品牌"
+                pendingLabel="正在删除..."
+                tone="danger"
+                confirmTitle="确认删除这个品牌吗？"
+                confirmDescription="删除后无法恢复，相关流程记录和 AI 挂接会一并清理。"
+              />
+            </form>
+          ) : (
+            <span className="inline-flex rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700">
+              已发布或待审核品牌不能直接删除，请先下线或转回草稿。
+            </span>
+          )}
+        </div>
       </section>
     </div>
   );

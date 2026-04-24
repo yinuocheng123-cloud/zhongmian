@@ -158,12 +158,21 @@ export function ContentForm({
           <FormSubmitButton
             intent="SUBMIT_REVIEW"
             label={intentLabels.SUBMIT_REVIEW}
+            confirmTitle="确认提交审核吗？"
+            confirmDescription="提交后内容会进入待审核状态，建议先检查摘要、正文和分类标签是否完整。"
           />
-          <FormSubmitButton intent="PUBLISH" label={intentLabels.PUBLISH} />
+          <FormSubmitButton
+            intent="PUBLISH"
+            label={intentLabels.PUBLISH}
+            confirmTitle="确认发布这条内容吗？"
+            confirmDescription="发布后这条内容会立即在前台可见，请确认标题、摘要、正文和发布时间都已准备好。"
+          />
           <FormSubmitButton
             intent="UNPUBLISH"
             label={intentLabels.UNPUBLISH}
             tone="danger"
+            confirmTitle="确认下线这条内容吗？"
+            confirmDescription="下线后前台会立即隐藏这条内容，但后台编辑记录会保留。"
           />
         </div>
       </div>

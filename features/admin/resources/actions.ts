@@ -64,6 +64,24 @@ function buildFieldErrorState(
   };
 }
 
+function getResourceActionLabel(kind: ResourceKind, intent: ResourceFormIntent) {
+  const resourceName = resourceLabels[kind].singular;
+
+  const actionLabelMap: Record<ResourceFormIntent, string> = {
+    SAVE: `${resourceName}已保存`,
+    SAVE_DRAFT: `${resourceName}已保存为草稿`,
+    SUBMIT_REVIEW: `${resourceName}已提交审核`,
+    PUBLISH: `${resourceName}已发布，前台现在可见`,
+    UNPUBLISH: `${resourceName}已下线，前台现在不可见`,
+  };
+
+  return actionLabelMap[intent];
+}
+
+function shouldEnforcePublishValidation(intent: ResourceFormIntent) {
+  return intent === "SUBMIT_REVIEW" || intent === "PUBLISH";
+}
+
 function ensureIntent(formData: FormData): ResourceFormIntent {
   const intent = formData.get("intent");
 
@@ -180,18 +198,35 @@ async function createContentVersion(
   });
 }
 
-function buildStatusActionRedirect(nextPath: string, label: string) {
-  return `${nextPath}?notice=${encodeURIComponent(label)}`;
-}
+function buildStatusActionRedirect(
+  nextPath: string,
+  feedback: {
+    notice?: string;
+    error?: string;
+  },
+) {
+  const url = new URL(nextPath, "http://localhost");
 
-function buildStatusActionErrorRedirect(nextPath: string, message: string) {
-  return `${nextPath}?error=${encodeURIComponent(message)}`;
+  if (feedback.notice) {
+    url.searchParams.set("notice", feedback.notice);
+  }
+
+  if (feedback.error) {
+    url.searchParams.set("error", feedback.error);
+  }
+
+  return `${url.pathname}${url.search}`;
 }
 
 type StatusMutationIntent = Extract<
   ResourceFormIntent,
   "SAVE_DRAFT" | "SUBMIT_REVIEW" | "PUBLISH" | "UNPUBLISH"
 >;
+
+type DeleteResult = {
+  id: string;
+  slug: string | null;
+};
 
 function ensureStatusMutationIntent(value: FormDataEntryValue | null) {
   if (
@@ -606,13 +641,18 @@ export async function saveContentAction(
     const categoryIds = getSelectedIds(formData, "categoryIds");
     const tagIds = getSelectedIds(formData, "tagIds");
     const intent = ensureIntent(formData);
+    const enforcePublishValidation = shouldEnforcePublishValidation(intent);
 
     const fieldErrors: Record<string, string> = {};
 
     if (!title) fieldErrors.title = "标题不能为空。";
     if (!slug) fieldErrors.slug = "Slug 不能为空。";
-    if (!summary) fieldErrors.summary = "摘要不能为空。";
-    if (!body) fieldErrors.body = "正文不能为空。";
+    if (enforcePublishValidation && !summary) {
+      fieldErrors.summary = "提交审核或发布前，请先补全摘要。";
+    }
+    if (enforcePublishValidation && !body) {
+      fieldErrors.body = "提交审核或发布前，请先补全正文。";
+    }
     if (!Object.values(ContentType).includes(contentType)) {
       fieldErrors.contentType = "请选择合法的内容类型。";
     }
@@ -621,7 +661,12 @@ export async function saveContentAction(
     }
 
     if (Object.keys(fieldErrors).length > 0) {
-      return buildFieldErrorState("请先修正内容表单中的必填项。", fieldErrors);
+      return buildFieldErrorState(
+        enforcePublishValidation
+          ? "当前内容还不完整，请先补全后再提交审核或发布。"
+          : "请先修正内容表单中的必填项。",
+        fieldErrors,
+      );
     }
 
     const saved = await saveContent(contentId, {
@@ -638,7 +683,9 @@ export async function saveContentAction(
 
     revalidateResourcePaths("content", saved.id, saved.slug);
     redirect(
-      `/admin/content/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
+      `/admin/content/${saved.id}?notice=${encodeURIComponent(
+        getResourceActionLabel("content", intent),
+      )}`,
     );
   } catch (error) {
     if (isRedirectError(error)) {
@@ -679,18 +726,29 @@ export async function saveTermAction(
     const categoryIds = getSelectedIds(formData, "categoryIds");
     const tagIds = getSelectedIds(formData, "tagIds");
     const intent = ensureIntent(formData);
+    const enforcePublishValidation = shouldEnforcePublishValidation(intent);
 
     const fieldErrors: Record<string, string> = {};
 
     if (!name) fieldErrors.name = "词条名称不能为空。";
     if (!slug) fieldErrors.slug = "Slug 不能为空。";
-    if (!definition) fieldErrors.definition = "标准定义不能为空。";
+    if (enforcePublishValidation && !shortDefinition) {
+      fieldErrors.shortDefinition = "提交审核或发布前，请先补全一句话定义。";
+    }
+    if (enforcePublishValidation && !definition) {
+      fieldErrors.definition = "提交审核或发布前，请先补全标准定义。";
+    }
     if (publishedAtInput && !parseDateTimeInput(publishedAtInput)) {
       fieldErrors.publishedAt = "发布时间格式无效，请重新选择。";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
-      return buildFieldErrorState("请先修正词条表单中的必填项。", fieldErrors);
+      return buildFieldErrorState(
+        enforcePublishValidation
+          ? "当前词条还不完整，请先补全后再提交审核或发布。"
+          : "请先修正词条表单中的必填项。",
+        fieldErrors,
+      );
     }
 
     const saved = await saveTerm(termId, {
@@ -708,7 +766,9 @@ export async function saveTermAction(
 
     revalidateResourcePaths("term", saved.id, saved.slug);
     redirect(
-      `/admin/terms/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
+      `/admin/terms/${saved.id}?notice=${encodeURIComponent(
+        getResourceActionLabel("term", intent),
+      )}`,
     );
   } catch (error) {
     if (isRedirectError(error)) {
@@ -751,19 +811,29 @@ export async function saveBrandAction(
     const categoryIds = getSelectedIds(formData, "categoryIds");
     const tagIds = getSelectedIds(formData, "tagIds");
     const intent = ensureIntent(formData);
+    const enforcePublishValidation = shouldEnforcePublishValidation(intent);
 
     const fieldErrors: Record<string, string> = {};
 
     if (!name) fieldErrors.name = "品牌名称不能为空。";
     if (!slug) fieldErrors.slug = "Slug 不能为空。";
-    if (!summary) fieldErrors.summary = "简介不能为空。";
-    if (!description) fieldErrors.description = "品牌描述不能为空。";
+    if (enforcePublishValidation && !summary) {
+      fieldErrors.summary = "提交审核或发布前，请先补全品牌简介。";
+    }
+    if (enforcePublishValidation && !description) {
+      fieldErrors.description = "提交审核或发布前，请先补全详细介绍。";
+    }
     if (publishedAtInput && !parseDateTimeInput(publishedAtInput)) {
       fieldErrors.publishedAt = "发布时间格式无效，请重新选择。";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
-      return buildFieldErrorState("请先修正品牌表单中的必填项。", fieldErrors);
+      return buildFieldErrorState(
+        enforcePublishValidation
+          ? "当前品牌信息还不完整，请先补全后再提交审核或发布。"
+          : "请先修正品牌表单中的必填项。",
+        fieldErrors,
+      );
     }
 
     const saved = await saveBrand(brandId, {
@@ -783,7 +853,9 @@ export async function saveBrandAction(
 
     revalidateResourcePaths("brand", saved.id, saved.slug);
     redirect(
-      `/admin/brands/${saved.id}?notice=${encodeURIComponent(intentLabels[intent])}`,
+      `/admin/brands/${saved.id}?notice=${encodeURIComponent(
+        getResourceActionLabel("brand", intent),
+      )}`,
     );
   } catch (error) {
     if (isRedirectError(error)) {
@@ -996,6 +1068,104 @@ async function updateResourceWorkflowStatus(
   });
 }
 
+async function deleteResource(
+  kind: ResourceKind,
+  resourceId: string,
+): Promise<DeleteResult> {
+  return prisma.$transaction(async (tx) => {
+    if (kind === "content") {
+      const existing = await tx.content.findUnique({
+        where: { id: resourceId },
+        select: {
+          id: true,
+          slug: true,
+          workflowStatus: true,
+        },
+      });
+
+      if (!existing) {
+        throw new Error("内容不存在或已被删除。");
+      }
+
+      if (
+        existing.workflowStatus === "PUBLISHED" ||
+        existing.workflowStatus === "PENDING_REVIEW"
+      ) {
+        throw new Error("已发布或待审核的内容不能直接删除，请先下线或转回草稿。");
+      }
+
+      await tx.content.delete({
+        where: { id: existing.id },
+      });
+
+      return {
+        id: existing.id,
+        slug: existing.slug,
+      };
+    }
+
+    if (kind === "term") {
+      const existing = await tx.term.findUnique({
+        where: { id: resourceId },
+        select: {
+          id: true,
+          slug: true,
+          workflowStatus: true,
+        },
+      });
+
+      if (!existing) {
+        throw new Error("词条不存在或已被删除。");
+      }
+
+      if (
+        existing.workflowStatus === "PUBLISHED" ||
+        existing.workflowStatus === "PENDING_REVIEW"
+      ) {
+        throw new Error("已发布或待审核的词条不能直接删除，请先下线或转回草稿。");
+      }
+
+      await tx.term.delete({
+        where: { id: existing.id },
+      });
+
+      return {
+        id: existing.id,
+        slug: existing.slug,
+      };
+    }
+
+    const existing = await tx.brand.findUnique({
+      where: { id: resourceId },
+      select: {
+        id: true,
+        slug: true,
+        workflowStatus: true,
+      },
+    });
+
+    if (!existing) {
+      throw new Error("品牌不存在或已被删除。");
+    }
+
+    if (
+      existing.workflowStatus === "PUBLISHED" ||
+      existing.workflowStatus === "PENDING_REVIEW"
+    ) {
+      throw new Error("已发布或待审核的品牌不能直接删除，请先下线或转回草稿。");
+    }
+
+    await tx.brand.delete({
+      where: { id: existing.id },
+    });
+
+    return {
+      id: existing.id,
+      slug: existing.slug,
+    };
+  });
+}
+
 export async function changeResourceWorkflowStatusAction(
   kind: ResourceKind,
   resourceId: string,
@@ -1008,9 +1178,17 @@ export async function changeResourceWorkflowStatusAction(
     ensureDatabaseReady();
     const savedItem = await updateResourceWorkflowStatus(kind, resourceId, intent);
     revalidateResourcePaths(kind, savedItem.id, savedItem.slug);
-    redirect(buildStatusActionRedirect(nextPath, intentLabels[intent]));
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        notice: getResourceActionLabel(kind, intent),
+      }),
+    );
   } catch (error) {
-    redirect(buildStatusActionErrorRedirect(nextPath, getErrorMessage(error)));
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        error: `${resourceLabels[kind].singular}操作未完成：${getErrorMessage(error)}`,
+      }),
+    );
   }
 }
 
@@ -1035,23 +1213,182 @@ export async function changeBulkResourceWorkflowStatusAction(
       throw new Error("请先勾选至少一条内容后再执行批量操作。");
     }
 
-    const updatedItems = [];
+    const updatedItems: Array<{ id: string; slug: string | null }> = [];
+    const failedMessages: string[] = [];
 
     for (const resourceId of resourceIds) {
-      updatedItems.push(await updateResourceWorkflowStatus(kind, resourceId, intent));
+      try {
+        updatedItems.push(
+          await updateResourceWorkflowStatus(kind, resourceId, intent),
+        );
+      } catch (error) {
+        failedMessages.push(getErrorMessage(error));
+      }
     }
 
     updatedItems.forEach((item) => {
       revalidateResourcePaths(kind, item.id, item.slug);
     });
 
+    const successCount = updatedItems.length;
+    const failedCount = failedMessages.length;
+
+    if (successCount === 0) {
+      throw new Error(
+        failedMessages[0] ?? "本次批量操作未成功处理任何内容，请稍后重试。",
+      );
+    }
+
     redirect(
-      buildStatusActionRedirect(
-        nextPath,
-        `已批量执行：${intentLabels[intent]}（${updatedItems.length} 项）`,
-      ),
+      buildStatusActionRedirect(nextPath, {
+        notice: `${intentLabels[intent]}已完成：成功 ${successCount} 项${
+          failedCount > 0 ? `，失败 ${failedCount} 项` : ""
+        }。`,
+        error:
+          failedCount > 0
+            ? `未处理成功的项目：${failedMessages.slice(0, 2).join("；")}${
+                failedCount > 2 ? "；请进入对应列表复查剩余项目。" : ""
+              }`
+            : undefined,
+      }),
     );
   } catch (error) {
-    redirect(buildStatusActionErrorRedirect(nextPath, getErrorMessage(error)));
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        error: `批量操作未完成：${getErrorMessage(error)}`,
+      }),
+    );
+  }
+}
+
+export async function changeResourceWorkflowStatusActionSafe(
+  kind: ResourceKind,
+  resourceId: string,
+  intent: StatusMutationIntent,
+  nextPath: string,
+) {
+  await requireAdminSession(nextPath);
+
+  try {
+    ensureDatabaseReady();
+    const savedItem = await updateResourceWorkflowStatus(kind, resourceId, intent);
+    revalidateResourcePaths(kind, savedItem.id, savedItem.slug);
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        notice: getResourceActionLabel(kind, intent),
+      }),
+    );
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        error: `${resourceLabels[kind].singular}状态更新未完成：${getErrorMessage(error)}`,
+      }),
+    );
+  }
+}
+
+export async function changeBulkResourceWorkflowStatusActionSafe(
+  kind: ResourceKind,
+  nextPath: string,
+  formData: FormData,
+) {
+  await requireAdminSession(nextPath);
+
+  try {
+    ensureDatabaseReady();
+
+    const intent = ensureStatusMutationIntent(formData.get("intent"));
+    const resourceIds = [...new Set(getSelectedIds(formData, "resourceIds"))];
+
+    if (!intent) {
+      throw new Error("当前批量操作无效，请重新选择后再试。");
+    }
+
+    if (resourceIds.length === 0) {
+      throw new Error("请先勾选至少一条记录后再执行批量操作。");
+    }
+
+    const updatedItems: Array<{ id: string; slug: string | null }> = [];
+    const failedMessages: string[] = [];
+
+    for (const resourceId of resourceIds) {
+      try {
+        updatedItems.push(
+          await updateResourceWorkflowStatus(kind, resourceId, intent),
+        );
+      } catch (error) {
+        failedMessages.push(getErrorMessage(error));
+      }
+    }
+
+    updatedItems.forEach((item) => {
+      revalidateResourcePaths(kind, item.id, item.slug);
+    });
+
+    const successCount = updatedItems.length;
+    const failedCount = failedMessages.length;
+
+    if (successCount === 0) {
+      throw new Error(
+        failedMessages[0] ?? "本次批量操作未成功处理任何记录，请稍后重试。",
+      );
+    }
+
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        notice: `${intentLabels[intent]}已完成：成功 ${successCount} 项${
+          failedCount > 0 ? `，失败 ${failedCount} 项` : ""
+        }。`,
+        error:
+          failedCount > 0
+            ? `未处理成功的项目：${failedMessages.slice(0, 2).join("；")}${
+                failedCount > 2 ? "；请进入对应列表复查剩余项目。" : ""
+              }`
+            : undefined,
+      }),
+    );
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        error: `批量操作未完成：${getErrorMessage(error)}`,
+      }),
+    );
+  }
+}
+
+export async function deleteResourceAction(
+  kind: ResourceKind,
+  resourceId: string,
+  nextPath: string,
+) {
+  await requireAdminSession(nextPath);
+
+  try {
+    ensureDatabaseReady();
+    const deletedItem = await deleteResource(kind, resourceId);
+    revalidateResourcePaths(kind, deletedItem.id, deletedItem.slug);
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        notice: `${resourceLabels[kind].singular}已删除，相关草稿与流程记录已一并清理。`,
+      }),
+    );
+  } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
+    redirect(
+      buildStatusActionRedirect(nextPath, {
+        error: `${resourceLabels[kind].singular}删除未完成：${getErrorMessage(error)}`,
+      }),
+    );
   }
 }

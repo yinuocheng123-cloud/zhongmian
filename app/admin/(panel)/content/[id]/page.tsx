@@ -11,7 +11,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { ContentForm } from "@/components/admin/content-form";
+import { FormSubmitButton } from "@/components/admin/form-submit-button";
 import { ResourceStatusBadge } from "@/components/admin/resource-status-badge";
+import { deleteResourceAction } from "@/features/admin/resources/actions";
 import { workflowStatusLabels } from "@/features/admin/resources/constants";
 import { getContentEditorData } from "@/features/admin/resources/server";
 import { formatDateTime } from "@/features/admin/resources/utils";
@@ -52,6 +54,11 @@ export default async function AdminContentDetailPage({
       />
     );
   }
+
+  const canDelete =
+    result.data.formValues.workflowStatus === "DRAFT" ||
+    result.data.formValues.workflowStatus === "OFFLINE";
+  const deleteAction = deleteResourceAction.bind(null, "content", id, "/admin/content");
 
   return (
     <div className="space-y-6">
@@ -205,6 +212,36 @@ export default async function AdminContentDetailPage({
               )}
             </div>
           </section>
+        </div>
+      </section>
+
+      <section className="rounded-[28px] border border-rose-200 bg-rose-50/60 p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <h3 className="font-serif text-xl font-semibold text-foreground">
+              删除内容
+            </h3>
+            <p className="text-sm leading-7 text-muted">
+              仅允许删除草稿或已下线内容。删除后将同步清理该内容的工作流、版本记录和 AI 挂接记录，前台也不会再保留访问入口。
+            </p>
+          </div>
+
+          {canDelete ? (
+            <form action={deleteAction}>
+              <FormSubmitButton
+                intent="DELETE"
+                label="删除内容"
+                pendingLabel="正在删除..."
+                tone="danger"
+                confirmTitle="确认删除这条内容吗？"
+                confirmDescription="删除后无法恢复，相关草稿、版本记录和流程记录会一并清理。"
+              />
+            </form>
+          ) : (
+            <span className="inline-flex rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700">
+              已发布或待审核内容不能直接删除，请先下线或转回草稿。
+            </span>
+          )}
         </div>
       </section>
     </div>

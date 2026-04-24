@@ -1,19 +1,20 @@
 /**
  * 文件说明：该文件实现 AI 编辑部任务列表页。
- * 功能说明：读取真实 AiTask 数据，展示任务标题、模板、provider、结构化输入摘要、
- * 生成结果概览、关联 Content 与任务状态，并提供最小可用筛选能力。
+ * 功能说明：读取真实 AiTask 数据，并增强状态、模板、Provider、挂接内容和空状态的可读性。
  *
  * 结构概览：
  *   第一部分：依赖导入与查询参数工具
- *   第二部分：任务列表页实现
+ *   第二部分：AI 任务列表页实现
  */
 
 import Link from "next/link";
+import { AdminListEmptyState } from "@/components/admin/admin-list-empty-state";
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { AiTaskStatusBadge } from "@/components/admin/ai-task-status-badge";
 import {
   aiTaskStatusLabels,
   aiTaskTypeOptions,
+  getAiProviderLabel,
 } from "@/features/admin/editorial/constants";
 import { getAiTaskList } from "@/features/admin/editorial/server";
 import { formatDateTime } from "@/features/admin/resources/utils";
@@ -43,6 +44,7 @@ export default async function AdminAiEditorialPage({
   const provider = getSingleParam(resolvedSearchParams, "provider");
   const notice = getSingleParam(resolvedSearchParams, "notice");
   const errorMessage = getSingleParam(resolvedSearchParams, "error");
+  const hasFilters = Boolean(q || status || taskType || provider);
   const result = await getAiTaskList({
     q,
     status: status as never,
@@ -57,7 +59,7 @@ export default async function AdminAiEditorialPage({
       ) : null}
 
       {errorMessage ? (
-        <AdminNotice tone="error" title="操作失败" description={errorMessage} />
+        <AdminNotice tone="error" title="操作未完成" description={errorMessage} />
       ) : null}
 
       <section className="rounded-[28px] border border-line bg-surface-soft p-6">
@@ -67,8 +69,7 @@ export default async function AdminAiEditorialPage({
               AI 编辑部
             </h2>
             <p className="max-w-3xl text-sm leading-7 text-muted">
-              这里管理中眠网的选题、占位生成与内容挂接任务。运营可以从列表页快速判断：
-              哪些任务还在待生成、哪些模板正在使用、哪些任务已经挂到 Content 草稿上。
+              这里管理中眠网的选题、结构化输入、模拟生成结果和 Content 草稿挂接。列表优先帮助运营看清“任务 → 生成 → 内容”的关系，而不是只看一组任务 ID。
             </p>
           </div>
           <Link
@@ -86,7 +87,7 @@ export default async function AdminAiEditorialPage({
               type="text"
               name="q"
               defaultValue={q}
-              placeholder="任务标题、模板、关联内容、生成结果片段"
+              placeholder="任务标题、模板、关联内容、结果片段"
               className="h-11 rounded-2xl border border-line bg-white px-4 outline-none transition focus:border-brand"
             />
           </label>
@@ -152,11 +153,11 @@ export default async function AdminAiEditorialPage({
       ) : null}
 
       <section className="overflow-hidden rounded-[28px] border border-line bg-white">
-        <div className="grid grid-cols-[1.25fr_1fr_1fr_0.75fr_0.8fr_0.55fr] gap-4 border-b border-line bg-surface-soft px-6 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+        <div className="grid grid-cols-[1.25fr_1fr_1fr_0.85fr_0.9fr_0.7fr] gap-4 border-b border-line bg-surface-soft px-6 py-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
           <span>任务</span>
           <span>模板 / Provider</span>
-          <span>结构化输入 / 结果</span>
-          <span>关联 Content</span>
+          <span>输入 / 输出摘要</span>
+          <span>挂接内容</span>
           <span>状态 / 时间</span>
           <span>操作</span>
         </div>
@@ -166,7 +167,7 @@ export default async function AdminAiEditorialPage({
             {result.data.map((item) => (
               <div
                 key={item.id}
-                className="grid grid-cols-[1.25fr_1fr_1fr_0.75fr_0.8fr_0.55fr] gap-4 px-6 py-5 text-sm text-foreground"
+                className="grid grid-cols-[1.25fr_1fr_1fr_0.85fr_0.9fr_0.7fr] gap-4 px-6 py-5 text-sm text-foreground"
               >
                 <div className="min-w-0">
                   <Link
@@ -188,13 +189,13 @@ export default async function AdminAiEditorialPage({
                     {item.templateName}
                   </p>
                   <p className="mt-1 truncate">
-                    Provider：{item.providerId ?? "尚未记录"}
+                    Provider：{getAiProviderLabel(item.providerId)}
                   </p>
                   <p className="mt-1 truncate">任务 ID：{item.id}</p>
                 </div>
 
                 <div className="min-w-0 text-xs leading-6 text-muted">
-                  <p className="line-clamp-2">
+                  <p className="line-clamp-3">
                     {item.excerpt || "当前还没有生成结果摘要，可进入详情页执行占位生成。"}
                   </p>
                 </div>
@@ -209,9 +210,15 @@ export default async function AdminAiEditorialPage({
                         {item.content.title}
                       </Link>
                       <p className="mt-1">{item.content.workflowStatus}</p>
+                      <Link
+                        href={`/admin/content/${item.content.id}`}
+                        className="mt-2 inline-flex rounded-xl border border-line px-3 py-1 text-xs font-medium text-foreground transition hover:border-brand hover:text-brand"
+                      >
+                        进入内容草稿
+                      </Link>
                     </>
                   ) : (
-                    <p>未挂接 Content 草稿</p>
+                    <p>当前还没有挂接 Content 草稿</p>
                   )}
                 </div>
 
@@ -230,16 +237,25 @@ export default async function AdminAiEditorialPage({
                     href={`/admin/ai-editorial/${item.id}`}
                     className="inline-flex rounded-xl border border-line px-3 py-2 text-xs font-medium text-foreground transition hover:border-brand hover:text-brand"
                   >
-                    查看
+                    查看详情
                   </Link>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="px-6 py-12 text-center text-sm text-muted">
-            当前还没有可展示的 AI 任务数据，可以先新建一条选题任务打通编辑部流程。
-          </div>
+          <AdminListEmptyState
+            title={hasFilters ? "未找到符合条件的 AI 任务" : "暂无 AI 任务"}
+            description={
+              hasFilters
+                ? "当前筛选条件下没有找到 AI 任务，可以清空搜索词、状态、类型或 Provider 后再试。"
+                : "AI 编辑部当前还是空的，可以先新建一条任务跑通“任务 → 生成 → Content 草稿”的链路。"
+            }
+            primaryHref={hasFilters ? "/admin/ai-editorial" : "/admin/ai-editorial/new"}
+            primaryLabel={hasFilters ? "清空筛选" : "去新建任务"}
+            secondaryHref={hasFilters ? "/admin/ai-editorial/new" : undefined}
+            secondaryLabel={hasFilters ? "新建任务" : undefined}
+          />
         )}
       </section>
     </div>

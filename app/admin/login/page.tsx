@@ -53,7 +53,11 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
   const loginHint = getAdminLoginHint();
   const credentialPreview = getAdminCredentialPreview();
   const noticeMessage =
-    params.notice === "logged-out" ? "你已安全退出后台。" : null;
+    params.notice === "logged-out"
+      ? "你已安全退出后台。"
+      : params.notice === "session-expired"
+        ? "登录已过期，请重新登录后继续操作。"
+        : null;
   const errorMessage = resolveLoginErrorMessage(params.error);
 
   return (

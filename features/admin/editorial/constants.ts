@@ -42,6 +42,18 @@ export const aiTaskStatusClasses: Record<AiTaskStatus, string> = {
   CANCELED: "bg-zinc-200 text-zinc-700",
 };
 
+export const aiProviderLabels: Record<string, string> = {
+  "placeholder-mock": "模拟生成器",
+};
+
+export function getAiProviderLabel(providerId?: string | null) {
+  if (!providerId) {
+    return "尚未执行生成";
+  }
+
+  return aiProviderLabels[providerId] ?? providerId;
+}
+
 export const aiEditorialIntentLabels: Record<AiEditorialIntent, string> = {
   SAVE: "保存任务",
   MARK_PENDING: "置为待生成",

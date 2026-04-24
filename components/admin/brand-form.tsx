@@ -160,12 +160,21 @@ export function BrandForm({
           <FormSubmitButton
             intent="SUBMIT_REVIEW"
             label={intentLabels.SUBMIT_REVIEW}
+            confirmTitle="确认提交审核吗？"
+            confirmDescription="提交后品牌会进入待审核状态，建议先补全简介、详细介绍和主营方向。"
           />
-          <FormSubmitButton intent="PUBLISH" label={intentLabels.PUBLISH} />
+          <FormSubmitButton
+            intent="PUBLISH"
+            label={intentLabels.PUBLISH}
+            confirmTitle="确认发布这个品牌吗？"
+            confirmDescription="发布后品牌会立即在前台品牌库中可见，请确认品牌信息已经适合公开展示。"
+          />
           <FormSubmitButton
             intent="UNPUBLISH"
             label={intentLabels.UNPUBLISH}
             tone="danger"
+            confirmTitle="确认下线这个品牌吗？"
+            confirmDescription="下线后前台会立即隐藏这个品牌，但后台收录记录会保留。"
           />
         </div>
       </div>

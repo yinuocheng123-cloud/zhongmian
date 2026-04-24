@@ -90,6 +90,7 @@ export function TermForm({
         defaultValue={initialValues.shortDefinition}
         rows={3}
         description="用于列表页、卡片和词条精选摘要。"
+        error={state.fieldErrors?.shortDefinition}
       />
 
       <StructuredTextEditor
@@ -147,12 +148,21 @@ export function TermForm({
           <FormSubmitButton
             intent="SUBMIT_REVIEW"
             label={intentLabels.SUBMIT_REVIEW}
+            confirmTitle="确认提交审核吗？"
+            confirmDescription="提交后词条会进入待审核状态，建议先补全一句话定义和标准定义。"
           />
-          <FormSubmitButton intent="PUBLISH" label={intentLabels.PUBLISH} />
+          <FormSubmitButton
+            intent="PUBLISH"
+            label={intentLabels.PUBLISH}
+            confirmTitle="确认发布这条词条吗？"
+            confirmDescription="发布后词条会立即在前台词库中可见，请确认定义已经准确、清晰。"
+          />
           <FormSubmitButton
             intent="UNPUBLISH"
             label={intentLabels.UNPUBLISH}
             tone="danger"
+            confirmTitle="确认下线这条词条吗？"
+            confirmDescription="下线后前台会立即隐藏这条词条，但后台编辑记录会保留。"
           />
         </div>
       </div>

@@ -41,6 +41,11 @@ export type AdminSession = {
   expiresAt: number;
 };
 
+type AdminSessionState = {
+  session: AdminSession | null;
+  hasCookie: boolean;
+};
+
 function encodeBase64Url(value: string) {
   return Buffer.from(value, "utf8").toString("base64url");
 }
@@ -181,15 +186,51 @@ export const getOptionalAdminSession = cache(async () => {
   return parseSessionToken(token, config.secret);
 });
 
-export async function requireAdminSession(nextPath?: string) {
-  const session = await getOptionalAdminSession();
+const getAdminSessionState = cache(async (): Promise<AdminSessionState> => {
+  const config = getAdminAuthConfig();
 
-  if (!session) {
-    const targetPath = sanitizeAdminNextPath(nextPath);
-    redirect(`/admin/login?next=${encodeURIComponent(targetPath)}`);
+  if (!config.isConfigured) {
+    return {
+      session: null,
+      hasCookie: false,
+    };
   }
 
-  return session;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
+
+  if (!token) {
+    return {
+      session: null,
+      hasCookie: false,
+    };
+  }
+
+  return {
+    session: parseSessionToken(token, config.secret),
+    hasCookie: true,
+  };
+});
+
+export async function requireAdminSession(nextPath?: string) {
+  const sessionState = await getAdminSessionState();
+
+  if (!sessionState.session) {
+    const targetPath = sanitizeAdminNextPath(nextPath);
+    const redirectParams = new URLSearchParams({
+      next: targetPath,
+    });
+
+    if (sessionState.hasCookie) {
+      const cookieStore = await cookies();
+      cookieStore.delete(ADMIN_SESSION_COOKIE_NAME);
+      redirectParams.set("notice", "session-expired");
+    }
+
+    redirect(`/admin/login?${redirectParams.toString()}`);
+  }
+
+  return sessionState.session;
 }
 
 export async function createAdminSession(username: string) {

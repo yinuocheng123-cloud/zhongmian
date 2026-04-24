@@ -10,8 +10,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminNotice } from "@/components/admin/admin-notice";
+import { FormSubmitButton } from "@/components/admin/form-submit-button";
 import { ResourceStatusBadge } from "@/components/admin/resource-status-badge";
 import { TermForm } from "@/components/admin/term-form";
+import { deleteResourceAction } from "@/features/admin/resources/actions";
 import { workflowStatusLabels } from "@/features/admin/resources/constants";
 import { getTermEditorData } from "@/features/admin/resources/server";
 import { formatDateTime } from "@/features/admin/resources/utils";
@@ -52,6 +54,11 @@ export default async function AdminTermDetailPage({
       />
     );
   }
+
+  const canDelete =
+    result.data.formValues.workflowStatus === "DRAFT" ||
+    result.data.formValues.workflowStatus === "OFFLINE";
+  const deleteAction = deleteResourceAction.bind(null, "term", id, "/admin/terms");
 
   return (
     <div className="space-y-6">
@@ -149,6 +156,36 @@ export default async function AdminTermDetailPage({
             <p>相关词条当前先通过标签和分类做预留，后续需要时再升级成显式关系表。</p>
           </div>
         </section>
+      </section>
+
+      <section className="rounded-[28px] border border-rose-200 bg-rose-50/60 p-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <h3 className="font-serif text-xl font-semibold text-foreground">
+              删除词条
+            </h3>
+            <p className="text-sm leading-7 text-muted">
+              仅允许删除草稿或已下线词条。删除后会同步清理该词条的流程记录和 AI 挂接，避免测试残留长期停留在后台。
+            </p>
+          </div>
+
+          {canDelete ? (
+            <form action={deleteAction}>
+              <FormSubmitButton
+                intent="DELETE"
+                label="删除词条"
+                pendingLabel="正在删除..."
+                tone="danger"
+                confirmTitle="确认删除这条词条吗？"
+                confirmDescription="删除后无法恢复，相关流程记录和 AI 挂接会一并清理。"
+              />
+            </form>
+          ) : (
+            <span className="inline-flex rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700">
+              已发布或待审核词条不能直接删除，请先下线或转回草稿。
+            </span>
+          )}
+        </div>
       </section>
     </div>
   );
