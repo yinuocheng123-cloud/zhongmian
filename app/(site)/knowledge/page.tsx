@@ -302,7 +302,7 @@ export default async function KnowledgePage({ searchParams }: PageProps) {
               {items.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/knowledge/${item.slug}`}
+                  href={`/knowledge/${encodeURIComponent(item.slug)}`}
                   className="portal-card rounded-[28px] p-7 transition hover:-translate-y-0.5 hover:border-brand"
                 >
                   <div className="flex flex-wrap items-center gap-2">
