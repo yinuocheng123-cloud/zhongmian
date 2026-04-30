@@ -13,6 +13,7 @@ import type {
   AiTaskType,
   CategoryScope,
   ContentType,
+  SiteChannelKey,
   WorkflowStatus,
 } from "@prisma/client";
 
@@ -30,6 +31,7 @@ export type ResourceListQuery = {
   q?: string;
   status?: WorkflowStatus | "";
   contentType?: ContentType | "";
+  channelKey?: SiteChannelKey | "";
 };
 
 export type TaxonomyOption = {
@@ -50,12 +52,19 @@ export type ContentFormValues = {
   title: string;
   slug: string;
   contentType: ContentType;
+  channelKey: SiteChannelKey;
   summary: string;
   body: string;
   publishedAt: string;
+  eventStartAt: string;
+  eventLocation: string;
+  eventKind: string;
+  referenceVersion: string;
   categoryIds: string[];
   tagIds: string[];
+  relatedBrandIds: string[];
   workflowStatus?: WorkflowStatus;
+  returnBasePath?: string;
 };
 
 export type TermFormValues = {
@@ -92,11 +101,17 @@ export const emptyContentFormValues: ContentFormValues = {
   title: "",
   slug: "",
   contentType: "KNOWLEDGE",
+  channelKey: "KNOWLEDGE",
   summary: "",
   body: "",
   publishedAt: "",
+  eventStartAt: "",
+  eventLocation: "",
+  eventKind: "",
+  referenceVersion: "",
   categoryIds: [],
   tagIds: [],
+  relatedBrandIds: [],
   workflowStatus: "DRAFT",
 };
 
@@ -160,6 +175,7 @@ export type ContentListItem = {
   title: string;
   slug: string;
   contentType: ContentType;
+  channelKey: SiteChannelKey;
   workflowStatus: WorkflowStatus;
   updatedAt: Date;
   publishedAt: Date | null;
@@ -206,6 +222,7 @@ export type ContentEditorData = {
   aiTasks: AiTaskSummaryItem[];
   categoryOptions: TaxonomyOption[];
   tagOptions: TaxonomyOption[];
+  brandOptions: TaxonomyOption[];
   publicPath: string | null;
 };
 

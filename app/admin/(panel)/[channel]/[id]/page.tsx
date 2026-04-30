@@ -1,10 +1,11 @@
 /**
- * 文件说明：该文件实现后台内容编辑页。
- * 功能说明：展示 Content 的真实编辑表单、工作流记录、版本记录、AI 任务挂点与前台查看入口。
+ * 文件说明：该文件实现后台扩展栏目的编辑页。
+ * 功能说明：为趋势、事件、品牌进展、榜单、指数、标准与智库内容提供统一的
+ * 编辑、工作流、版本记录、AI 任务入口与安全删除能力。
  *
  * 结构概览：
- *   第一部分：依赖导入与查询参数工具
- *   第二部分：内容编辑页实现
+ *   第一部分：依赖导入与参数工具
+ *   第二部分：扩展栏目编辑页实现
  */
 
 import Link from "next/link";
@@ -17,8 +18,9 @@ import { deleteResourceAction } from "@/features/admin/resources/actions";
 import { workflowStatusLabels } from "@/features/admin/resources/constants";
 import { getContentEditorData } from "@/features/admin/resources/server";
 import { formatDateTime } from "@/features/admin/resources/utils";
+import { getManagedChannelBySlug } from "@/lib/site-channels";
 
-type Params = Promise<{ id: string }>;
+type Params = Promise<{ channel: string; id: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 function getSingleParam(
@@ -29,17 +31,23 @@ function getSingleParam(
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
 }
 
-export default async function AdminContentDetailPage({
+export default async function AdminReservedChannelDetailPage({
   params,
   searchParams,
 }: {
   params: Params;
   searchParams?: SearchParams;
 }) {
-  const { id } = await params;
+  const { channel, id } = await params;
+  const config = getManagedChannelBySlug(channel);
+
+  if (!config) {
+    notFound();
+  }
+
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const notice = getSingleParam(resolvedSearchParams, "notice");
-  const result = await getContentEditorData(id);
+  const result = await getContentEditorData(id, `${config.adminPath}/${id}`);
 
   if (result.databaseReady && !result.data) {
     notFound();
@@ -49,16 +57,25 @@ export default async function AdminContentDetailPage({
     return (
       <AdminNotice
         tone="info"
-        title="当前无法读取内容详情"
+        title={`当前无法读取${config.title}详情`}
         description={result.error ?? "数据库尚未就绪，因此暂时无法进入真实编辑状态。"}
       />
     );
   }
 
+  if (result.data.formValues.channelKey !== config.channelKey) {
+    notFound();
+  }
+
   const canDelete =
     result.data.formValues.workflowStatus === "DRAFT" ||
     result.data.formValues.workflowStatus === "OFFLINE";
-  const deleteAction = deleteResourceAction.bind(null, "content", id, "/admin/content");
+  const deleteAction = deleteResourceAction.bind(
+    null,
+    "content",
+    id,
+    config.adminPath,
+  );
 
   return (
     <div className="space-y-6">
@@ -73,7 +90,7 @@ export default async function AdminContentDetailPage({
       {result.error ? (
         <AdminNotice
           tone={result.databaseReady ? "error" : "info"}
-          title={result.databaseReady ? "内容详情读取失败" : "当前为只读模式"}
+          title={result.databaseReady ? `${config.title}详情读取失败` : "当前为只读模式"}
           description={result.error}
         />
       ) : null}
@@ -82,10 +99,10 @@ export default async function AdminContentDetailPage({
         <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <h2 className="font-serif text-2xl font-semibold text-foreground">
-              编辑内容
+              编辑{config.title}内容
             </h2>
             <p className="text-sm leading-7 text-muted">
-              保存会写入 ContentVersion，状态切换会写入 Workflow。当前编辑页同时承接分类标签、发布时间和前台查看入口。
+              当前编辑页继续沿用统一 Content 模型、Workflow、ContentVersion 与 AI 任务挂点，确保新增栏目不脱离已有生产底座。
             </p>
           </div>
 
@@ -114,6 +131,8 @@ export default async function AdminContentDetailPage({
           categoryOptions={result.data.categoryOptions}
           tagOptions={result.data.tagOptions}
           brandOptions={result.data.brandOptions}
+          lockedChannelKey={config.channelKey}
+          returnBasePath={config.adminPath}
         />
       </section>
 
@@ -137,15 +156,17 @@ export default async function AdminContentDetailPage({
                     </span>
                   </div>
                   <p className="mt-2 text-sm leading-7 text-muted">
-                    {item.note ?? "未填写操作备注。"}
+                    {item.note ?? "当前没有补充备注。"}
                   </p>
                   <p className="mt-2 text-xs text-muted">
-                    操作者：{item.actorName ?? "未记录"}
+                    操作人：{item.actorName ?? "系统"}
                   </p>
                 </div>
               ))
             ) : (
-              <p className="text-sm text-muted">当前还没有工作流记录。</p>
+              <p className="rounded-2xl border border-dashed border-line p-4 text-sm leading-7 text-muted">
+                当前还没有工作流记录，保存或切换状态后会自动写入。
+              </p>
             )}
           </div>
         </div>
@@ -159,7 +180,7 @@ export default async function AdminContentDetailPage({
               {result.data.versions.length > 0 ? (
                 result.data.versions.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-line p-4">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                       <span className="text-sm font-semibold text-foreground">
                         V{item.versionNumber}
                       </span>
@@ -168,81 +189,79 @@ export default async function AdminContentDetailPage({
                       </span>
                     </div>
                     <p className="mt-2 text-sm leading-7 text-muted">
-                      {item.changeNote ?? "未填写变更说明。"}
+                      {item.changeNote ?? "当前版本未补充变更说明。"}
                     </p>
                     <p className="mt-2 text-xs text-muted">
-                      记录人：{item.createdBy ?? "未记录"}
+                      创建人：{item.createdBy ?? "系统"}
                     </p>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-muted">当前还没有版本记录。</p>
+                <p className="rounded-2xl border border-dashed border-line p-4 text-sm leading-7 text-muted">
+                  当前还没有版本记录，首次保存后会自动生成版本快照。
+                </p>
               )}
             </div>
           </section>
 
           <section className="rounded-[28px] border border-line bg-white p-6">
             <h3 className="font-serif text-xl font-semibold text-foreground">
-              AI 任务挂点
+              AI 编辑部挂点
             </h3>
             <div className="mt-5 space-y-4">
               {result.data.aiTasks.length > 0 ? (
                 result.data.aiTasks.map((item) => (
-                  <div key={item.id} className="rounded-2xl border border-line p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <Link
-                        href={`/admin/ai-editorial/${item.id}`}
-                        className="text-sm font-semibold text-foreground transition hover:text-brand"
-                      >
+                  <Link
+                    key={item.id}
+                    href={`/admin/ai-editorial/${item.id}`}
+                    className="block rounded-2xl border border-line p-4 transition hover:border-brand"
+                  >
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-sm font-semibold text-foreground">
                         {item.taskType}
-                      </Link>
-                      <span className="text-xs text-muted">{item.status}</span>
+                      </span>
+                      <span className="text-xs text-muted">
+                        {item.status}
+                      </span>
                     </div>
-                    <p className="mt-2 text-xs text-muted">
-                      Provider：{item.modelName ?? "未记录"}
+                    <p className="mt-2 text-sm text-muted">
+                      最近生成：{formatDateTime(item.finishedAt ?? item.createdAt)}
                     </p>
-                    <p className="mt-1 text-xs text-muted">
-                      创建于：{formatDateTime(item.createdAt)}
-                    </p>
-                  </div>
+                  </Link>
                 ))
               ) : (
-                <p className="text-sm leading-7 text-muted">
-                  当前还没有挂接的 AI 任务，可从 AI 编辑部创建选题并回挂到此内容草稿。
+                <p className="rounded-2xl border border-dashed border-line p-4 text-sm leading-7 text-muted">
+                  当前还没有关联的 AI 任务。后续可在 AI 编辑部中为该栏目内容创建草稿任务。
                 </p>
               )}
             </div>
           </section>
-        </div>
-      </section>
 
-      <section className="rounded-[28px] border border-rose-200 bg-rose-50/60 p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-2">
+          <section className="rounded-[28px] border border-line bg-white p-6">
             <h3 className="font-serif text-xl font-semibold text-foreground">
-              删除内容
+              删除与风险控制
             </h3>
-            <p className="text-sm leading-7 text-muted">
-              仅允许删除草稿或已下线内容。删除后将同步清理该内容的工作流、版本记录和 AI 挂接记录，前台也不会再保留访问入口。
+            <p className="mt-3 text-sm leading-7 text-muted">
+              为避免误删已公开内容，当前仅允许删除草稿或已下线内容。已发布与待审核内容请优先走下线或状态流转。
             </p>
-          </div>
-
-          {canDelete ? (
-            <form action={deleteAction}>
-              <FormSubmitButton
-                intent="DELETE"
-                label="删除内容"
-                pendingLabel="正在删除..."
-                tone="danger"
-                confirmTitle="确认删除这条内容吗？"
-                confirmDescription="删除后无法恢复，相关草稿、版本记录和流程记录会一并清理。"
-              />
-            </form>
-          ) : (
-            <span className="inline-flex rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm text-rose-700">
-              已发布或待审核内容不能直接删除，请先下线或转回草稿。
-            </span>
-          )}
+            {canDelete ? (
+              <form action={deleteAction} className="mt-5">
+                <FormSubmitButton
+                  intent="UNPUBLISH"
+                  type="submit"
+                  tone="danger"
+                  label={`删除当前${config.shortTitle}内容`}
+                  confirmTitle="确认删除当前内容吗？"
+                  confirmDescription="删除后会一并清理工作流与版本记录，当前操作不可撤销。"
+                />
+              </form>
+            ) : (
+              <p className="mt-5 rounded-2xl border border-dashed border-line p-4 text-sm leading-7 text-muted">
+                当前内容状态为 {workflowStatusLabels[result.data.formValues.workflowStatus ?? "DRAFT"]}，
+                为避免误删，暂不允许直接删除。请先下线或转回草稿后再执行删除。
+              </p>
+            )}
+          </section>
         </div>
       </section>
     </div>

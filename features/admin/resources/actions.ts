@@ -12,6 +12,7 @@
 
 import {
   ContentType,
+  SiteChannelKey,
   type Prisma,
   type WorkflowStatus,
 } from "@prisma/client";
@@ -40,6 +41,7 @@ import {
   resolveWorkflowStatus,
   slugify,
 } from "@/features/admin/resources/utils";
+import { getManagedChannelByKey } from "@/lib/site-channels";
 import { prisma } from "@/lib/prisma";
 
 function getTrimmedValue(formData: FormData, key: string) {
@@ -226,6 +228,7 @@ type StatusMutationIntent = Extract<
 type DeleteResult = {
   id: string;
   slug: string | null;
+  channelKey?: SiteChannelKey | null;
 };
 
 function ensureStatusMutationIntent(value: FormDataEntryValue | null) {
@@ -241,15 +244,33 @@ function ensureStatusMutationIntent(value: FormDataEntryValue | null) {
   return null;
 }
 
-function revalidateResourcePaths(kind: ResourceKind, id: string, slug?: string | null) {
+function revalidateResourcePaths(
+  kind: ResourceKind,
+  id: string,
+  slug?: string | null,
+  options?: {
+    channelKey?: SiteChannelKey | null;
+    listPath?: string;
+  },
+) {
   revalidatePath("/admin");
-  revalidatePath(resourceLabels[kind].listPath);
-  revalidatePath(`${resourceLabels[kind].listPath}/${id}`);
+  const listPath = options?.listPath ?? resourceLabels[kind].listPath;
+  revalidatePath(listPath);
+  revalidatePath(`${listPath}/${id}`);
 
   revalidatePath("/");
 
   if (kind === "content") {
     revalidatePath("/knowledge");
+    if (options?.channelKey) {
+      const channelPath = buildPublicPath("content", "__channel__", {
+        channelKey: options.channelKey,
+      })?.replace("/__channel__", "");
+
+      if (channelPath) {
+        revalidatePath(channelPath);
+      }
+    }
   }
 
   if (kind === "term") {
@@ -260,7 +281,11 @@ function revalidateResourcePaths(kind: ResourceKind, id: string, slug?: string |
     revalidatePath("/brands");
   }
 
-  const publicPath = slug ? buildPublicPath(kind, slug) : null;
+  const publicPath = slug
+    ? buildPublicPath(kind, slug, {
+        channelKey: options?.channelKey,
+      })
+    : null;
 
   if (publicPath) {
     revalidatePath(publicPath);
@@ -273,9 +298,15 @@ type ContentSavePayload = {
   summary: string;
   body: string;
   contentType: ContentType;
+  channelKey: SiteChannelKey;
+  eventStartAtInput: string;
+  eventLocation: string;
+  eventKind: string;
+  referenceVersion: string;
   publishedAtInput: string;
   categoryIds: string[];
   tagIds: string[];
+  relatedBrandIds: string[];
   intent: ResourceFormIntent;
 };
 
@@ -327,43 +358,59 @@ async function saveContent(
     const categoryConnections = payload.categoryIds.map((id) => ({ id }));
     const tagConnections = payload.tagIds.map((id) => ({ id }));
 
-    const content = existing
-      ? await tx.content.update({
-          where: { id: existing.id },
-          data: {
-            title: payload.title,
-            slug: payload.slug,
-            summary: payload.summary,
-            body: payload.body,
-            contentType: payload.contentType,
-            workflowStatus: nextStatus,
-            publishedAt,
-            categories: {
-              set: categoryConnections,
+      const content = existing
+        ? await tx.content.update({
+            where: { id: existing.id },
+            data: {
+              title: payload.title,
+              slug: payload.slug,
+              summary: payload.summary,
+              body: payload.body,
+              contentType: payload.contentType,
+              channelKey: payload.channelKey,
+              eventStartAt: parseDateTimeInput(payload.eventStartAtInput),
+              eventLocation: payload.eventLocation || null,
+              eventKind: payload.eventKind || null,
+              referenceVersion: payload.referenceVersion || null,
+              workflowStatus: nextStatus,
+              publishedAt,
+              categories: {
+                set: categoryConnections,
+              },
+              tags: {
+                set: tagConnections,
+              },
+              relatedBrands: {
+                set: payload.relatedBrandIds.map((id) => ({ id })),
+              },
             },
-            tags: {
-              set: tagConnections,
+          })
+        : await tx.content.create({
+            data: {
+              title: payload.title,
+              slug: payload.slug,
+              summary: payload.summary,
+              body: payload.body,
+              contentType: payload.contentType,
+              channelKey: payload.channelKey,
+              eventStartAt: parseDateTimeInput(payload.eventStartAtInput),
+              eventLocation: payload.eventLocation || null,
+              eventKind: payload.eventKind || null,
+              referenceVersion: payload.referenceVersion || null,
+              workflowStatus: nextStatus,
+              publishedAt,
+              seoKeywords: [],
+              categories: {
+                connect: categoryConnections,
+              },
+              tags: {
+                connect: tagConnections,
+              },
+              relatedBrands: {
+                connect: payload.relatedBrandIds.map((id) => ({ id })),
+              },
             },
-          },
-        })
-      : await tx.content.create({
-          data: {
-            title: payload.title,
-            slug: payload.slug,
-            summary: payload.summary,
-            body: payload.body,
-            contentType: payload.contentType,
-            workflowStatus: nextStatus,
-            publishedAt,
-            seoKeywords: [],
-            categories: {
-              connect: categoryConnections,
-            },
-            tags: {
-              connect: tagConnections,
-            },
-          },
-        });
+          });
 
     await createWorkflowLog(tx, {
       targetType: "CONTENT",
@@ -626,7 +673,8 @@ export async function saveContentAction(
   _prevState: ResourceFormState,
   formData: FormData,
 ): Promise<ResourceFormState> {
-  await requireAdminSession(contentId ? `/admin/content/${contentId}` : "/admin/content/new");
+  const returnBasePath = getTrimmedValue(formData, "returnBasePath") || "/admin/content";
+  await requireAdminSession(contentId ? `${returnBasePath}/${contentId}` : `${returnBasePath}/new`);
 
   try {
     ensureDatabaseReady();
@@ -637,9 +685,15 @@ export async function saveContentAction(
     const summary = getTrimmedValue(formData, "summary");
     const body = getTrimmedValue(formData, "body");
     const contentType = getTrimmedValue(formData, "contentType") as ContentType;
+    const channelKey = getTrimmedValue(formData, "channelKey") as SiteChannelKey;
+    const eventStartAtInput = getTrimmedValue(formData, "eventStartAt");
+    const eventLocation = getTrimmedValue(formData, "eventLocation");
+    const eventKind = getTrimmedValue(formData, "eventKind");
+    const referenceVersion = getTrimmedValue(formData, "referenceVersion");
     const publishedAtInput = getTrimmedValue(formData, "publishedAt");
     const categoryIds = getSelectedIds(formData, "categoryIds");
     const tagIds = getSelectedIds(formData, "tagIds");
+    const relatedBrandIds = getSelectedIds(formData, "relatedBrandIds");
     const intent = ensureIntent(formData);
     const enforcePublishValidation = shouldEnforcePublishValidation(intent);
 
@@ -660,6 +714,43 @@ export async function saveContentAction(
       fieldErrors.publishedAt = "发布时间格式无效，请重新选择。";
     }
 
+    if (!Object.values(SiteChannelKey).includes(channelKey)) {
+      fieldErrors.channelKey = "请选择合法的栏目归属。";
+    }
+    if (eventStartAtInput && !parseDateTimeInput(eventStartAtInput)) {
+      fieldErrors.eventStartAt = "事件时间格式无效，请重新选择。";
+    }
+    if (enforcePublishValidation && channelKey === "EVENTS") {
+      if (!eventStartAtInput) {
+        fieldErrors.eventStartAt = "发布行业事件前请先补全事件时间。";
+      }
+      if (!eventLocation) {
+        fieldErrors.eventLocation = "发布行业事件前请先补全事件地点。";
+      }
+      if (!eventKind) {
+        fieldErrors.eventKind = "发布行业事件前请先补全事件类型。";
+      }
+    }
+    if (enforcePublishValidation && channelKey === "STANDARDS" && !referenceVersion) {
+      fieldErrors.referenceVersion = "发布睡眠标准前请先补全标准版本号。";
+    }
+    if (
+      enforcePublishValidation &&
+      channelKey === "BRAND_PROGRESS" &&
+      relatedBrandIds.length === 0
+    ) {
+      fieldErrors.relatedBrandIds = "发布品牌进展前请至少关联一个品牌主体。";
+    }
+
+    const channelConfig =
+      channelKey === "KNOWLEDGE" ? null : getManagedChannelByKey(channelKey);
+    if (
+      channelConfig &&
+      !channelConfig.allowedContentTypes.includes(contentType)
+    ) {
+      fieldErrors.contentType = `当前栏目仅支持：${channelConfig.allowedContentTypes.join(" / ")}。`;
+    }
+
     if (Object.keys(fieldErrors).length > 0) {
       return buildFieldErrorState(
         enforcePublishValidation
@@ -675,15 +766,24 @@ export async function saveContentAction(
       summary,
       body,
       contentType,
+      channelKey,
+      eventStartAtInput,
+      eventLocation,
+      eventKind,
+      referenceVersion,
       publishedAtInput,
       categoryIds,
       tagIds,
+      relatedBrandIds,
       intent,
     });
 
-    revalidateResourcePaths("content", saved.id, saved.slug);
+    revalidateResourcePaths("content", saved.id, saved.slug, {
+      channelKey: saved.channelKey,
+      listPath: returnBasePath,
+    });
     redirect(
-      `/admin/content/${saved.id}?notice=${encodeURIComponent(
+      `${returnBasePath}/${saved.id}?notice=${encodeURIComponent(
         getResourceActionLabel("content", intent),
       )}`,
     );
@@ -889,6 +989,7 @@ async function updateResourceWorkflowStatus(
         select: {
           id: true,
           slug: true,
+          channelKey: true,
           title: true,
           summary: true,
           body: true,
@@ -920,14 +1021,15 @@ async function updateResourceWorkflowStatus(
             currentPublishedAt: existing.publishedAt,
           }),
         },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          summary: true,
-          body: true,
-          workflowStatus: true,
-        },
+          select: {
+            id: true,
+            slug: true,
+            channelKey: true,
+            title: true,
+            summary: true,
+            body: true,
+            workflowStatus: true,
+          },
       });
 
       await createWorkflowLog(tx, {
@@ -948,10 +1050,11 @@ async function updateResourceWorkflowStatus(
         changeNote: `列表页快速操作：${intentLabels[intent]}`,
       });
 
-      return {
-        id: updated.id,
-        slug: updated.slug,
-      };
+        return {
+          id: updated.id,
+          slug: updated.slug,
+          channelKey: updated.channelKey,
+        };
     }
 
     if (kind === "term") {
@@ -1074,14 +1177,15 @@ async function deleteResource(
 ): Promise<DeleteResult> {
   return prisma.$transaction(async (tx) => {
     if (kind === "content") {
-      const existing = await tx.content.findUnique({
-        where: { id: resourceId },
-        select: {
-          id: true,
-          slug: true,
-          workflowStatus: true,
-        },
-      });
+        const existing = await tx.content.findUnique({
+          where: { id: resourceId },
+          select: {
+            id: true,
+            slug: true,
+            channelKey: true,
+            workflowStatus: true,
+          },
+        });
 
       if (!existing) {
         throw new Error("内容不存在或已被删除。");
@@ -1101,6 +1205,7 @@ async function deleteResource(
       return {
         id: existing.id,
         slug: existing.slug,
+        channelKey: existing.channelKey,
       };
     }
 
@@ -1177,7 +1282,10 @@ export async function changeResourceWorkflowStatusAction(
   try {
     ensureDatabaseReady();
     const savedItem = await updateResourceWorkflowStatus(kind, resourceId, intent);
-    revalidateResourcePaths(kind, savedItem.id, savedItem.slug);
+    revalidateResourcePaths(kind, savedItem.id, savedItem.slug, {
+      channelKey: "channelKey" in savedItem ? savedItem.channelKey : undefined,
+      listPath: nextPath,
+    });
     redirect(
       buildStatusActionRedirect(nextPath, {
         notice: getResourceActionLabel(kind, intent),
@@ -1213,7 +1321,11 @@ export async function changeBulkResourceWorkflowStatusAction(
       throw new Error("请先勾选至少一条内容后再执行批量操作。");
     }
 
-    const updatedItems: Array<{ id: string; slug: string | null }> = [];
+    const updatedItems: Array<{
+      id: string;
+      slug: string | null;
+      channelKey?: SiteChannelKey | null;
+    }> = [];
     const failedMessages: string[] = [];
 
     for (const resourceId of resourceIds) {
@@ -1227,7 +1339,10 @@ export async function changeBulkResourceWorkflowStatusAction(
     }
 
     updatedItems.forEach((item) => {
-      revalidateResourcePaths(kind, item.id, item.slug);
+      revalidateResourcePaths(kind, item.id, item.slug, {
+        channelKey: "channelKey" in item ? item.channelKey : undefined,
+        listPath: nextPath,
+      });
     });
 
     const successCount = updatedItems.length;
@@ -1272,7 +1387,10 @@ export async function changeResourceWorkflowStatusActionSafe(
   try {
     ensureDatabaseReady();
     const savedItem = await updateResourceWorkflowStatus(kind, resourceId, intent);
-    revalidateResourcePaths(kind, savedItem.id, savedItem.slug);
+    revalidateResourcePaths(kind, savedItem.id, savedItem.slug, {
+      channelKey: "channelKey" in savedItem ? savedItem.channelKey : undefined,
+      listPath: nextPath,
+    });
     redirect(
       buildStatusActionRedirect(nextPath, {
         notice: getResourceActionLabel(kind, intent),
@@ -1312,7 +1430,11 @@ export async function changeBulkResourceWorkflowStatusActionSafe(
       throw new Error("请先勾选至少一条记录后再执行批量操作。");
     }
 
-    const updatedItems: Array<{ id: string; slug: string | null }> = [];
+    const updatedItems: Array<{
+      id: string;
+      slug: string | null;
+      channelKey?: SiteChannelKey | null;
+    }> = [];
     const failedMessages: string[] = [];
 
     for (const resourceId of resourceIds) {
@@ -1326,7 +1448,10 @@ export async function changeBulkResourceWorkflowStatusActionSafe(
     }
 
     updatedItems.forEach((item) => {
-      revalidateResourcePaths(kind, item.id, item.slug);
+      revalidateResourcePaths(kind, item.id, item.slug, {
+        channelKey: "channelKey" in item ? item.channelKey : undefined,
+        listPath: nextPath,
+      });
     });
 
     const successCount = updatedItems.length;
@@ -1374,7 +1499,10 @@ export async function deleteResourceAction(
   try {
     ensureDatabaseReady();
     const deletedItem = await deleteResource(kind, resourceId);
-    revalidateResourcePaths(kind, deletedItem.id, deletedItem.slug);
+    revalidateResourcePaths(kind, deletedItem.id, deletedItem.slug, {
+      channelKey: "channelKey" in deletedItem ? deletedItem.channelKey : undefined,
+      listPath: nextPath,
+    });
     redirect(
       buildStatusActionRedirect(nextPath, {
         notice: `${resourceLabels[kind].singular}已删除，相关草稿与流程记录已一并清理。`,

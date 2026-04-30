@@ -10,19 +10,19 @@
 import { AdminNotice } from "@/components/admin/admin-notice";
 import { ContentForm } from "@/components/admin/content-form";
 import { emptyContentFormValues } from "@/features/admin/resources/types";
-import { getContentTaxonomyOptions } from "@/features/admin/resources/server";
+import { getContentCreationOptions } from "@/features/admin/resources/server";
 
 export default async function AdminContentNewPage() {
-  const taxonomyResult = await getContentTaxonomyOptions();
+  const creationResult = await getContentCreationOptions();
 
   return (
     <div className="space-y-6">
-      {!taxonomyResult.databaseReady ? (
+      {!creationResult.databaseReady ? (
         <AdminNotice
           tone="info"
           title="当前为无数据库演示状态"
           description={
-            taxonomyResult.error ??
+            creationResult.error ??
             "表单结构和提交流程已经接好，但如未配置 DATABASE_URL，点击保存时会收到明确错误提示。"
           }
         />
@@ -39,8 +39,9 @@ export default async function AdminContentNewPage() {
         </div>
         <ContentForm
           initialValues={emptyContentFormValues}
-          categoryOptions={taxonomyResult.data.categoryOptions}
-          tagOptions={taxonomyResult.data.tagOptions}
+          categoryOptions={creationResult.data.categoryOptions}
+          tagOptions={creationResult.data.tagOptions}
+          brandOptions={creationResult.data.brandOptions}
         />
       </section>
     </div>

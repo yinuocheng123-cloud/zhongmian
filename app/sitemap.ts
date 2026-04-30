@@ -12,12 +12,21 @@ import type { MetadataRoute } from "next";
 import { WorkflowStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { buildAbsoluteUrl } from "@/lib/seo";
+import { getContentPublicPath, siteChannelConfigs } from "@/lib/site-channels";
 
 const staticRoutes = [
   { path: "/", priority: 1, changeFrequency: "daily" as const },
   { path: "/knowledge", priority: 0.9, changeFrequency: "daily" as const },
   { path: "/terms", priority: 0.9, changeFrequency: "weekly" as const },
   { path: "/brands", priority: 0.85, changeFrequency: "weekly" as const },
+  { path: siteChannelConfigs.trends.path, priority: 0.8, changeFrequency: "weekly" as const },
+  { path: siteChannelConfigs.events.path, priority: 0.8, changeFrequency: "weekly" as const },
+  { path: siteChannelConfigs["brand-progress"].path, priority: 0.78, changeFrequency: "weekly" as const },
+  { path: siteChannelConfigs.rankings.path, priority: 0.78, changeFrequency: "weekly" as const },
+  { path: siteChannelConfigs.indexes.path, priority: 0.78, changeFrequency: "weekly" as const },
+  { path: siteChannelConfigs.standards.path, priority: 0.78, changeFrequency: "weekly" as const },
+  { path: siteChannelConfigs["think-tank"].path, priority: 0.8, changeFrequency: "weekly" as const },
+  { path: siteChannelConfigs.cooperation.path, priority: 0.65, changeFrequency: "monthly" as const },
   { path: "/about", priority: 0.5, changeFrequency: "monthly" as const },
 ];
 
@@ -59,6 +68,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         select: {
           slug: true,
           updatedAt: true,
+          channelKey: true,
         },
       }),
       prisma.term.findMany({
@@ -84,11 +94,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     return [
       ...entries,
       ...contents.map((item) =>
-        createEntry(`/knowledge/${item.slug}`, {
+        createEntry(
+          getContentPublicPath({
+            slug: item.slug,
+            channelKey: item.channelKey,
+          }) ?? `/knowledge/${item.slug}`,
+          {
           lastModified: item.updatedAt,
           changeFrequency: "weekly",
           priority: 0.8,
-        }),
+          },
+        ),
       ),
       ...terms.map((item) =>
         createEntry(`/terms/${item.slug}`, {

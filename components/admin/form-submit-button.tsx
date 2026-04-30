@@ -16,6 +16,7 @@ import { useFormStatus } from "react-dom";
 type FormSubmitButtonProps = {
   intent: string;
   label: string;
+  type?: "submit" | "button";
   tone?: "primary" | "secondary" | "danger";
   form?: string;
   pendingLabel?: string;
@@ -33,6 +34,7 @@ const toneClassMap: Record<NonNullable<FormSubmitButtonProps["tone"]>, string> =
 export function FormSubmitButton({
   intent,
   label,
+  type = "submit",
   tone = "secondary",
   form,
   pendingLabel,
@@ -59,7 +61,7 @@ export function FormSubmitButton({
 
   return (
     <button
-      type="submit"
+      type={type}
       name="intent"
       value={intent}
       form={form}

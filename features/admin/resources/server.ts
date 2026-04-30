@@ -204,14 +204,63 @@ async function getTaxonomyOptions(
   };
 }
 
-export async function getContentTaxonomyOptions() {
-  await requireAdminSession("/admin/content");
+export async function getContentTaxonomyOptions(
+  nextPath = "/admin/content",
+) {
+  await requireAdminSession(nextPath);
 
   return safeQuery<ResourceTaxonomyOptions>(
     () => getTaxonomyOptions(["GENERAL", "CONTENT", "INDUSTRY"]),
     {
       categoryOptions: [],
       tagOptions: [],
+    },
+  );
+}
+
+async function getContentBrandOptions() {
+  const brands = await prisma.brand.findMany({
+    orderBy: [{ isFeatured: "desc" }, { updatedAt: "desc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      summary: true,
+    },
+    take: 60,
+  });
+
+  return brands.map((item) => ({
+    id: item.id,
+    name: item.name,
+    slug: item.slug,
+    description: item.summary,
+  }));
+}
+
+export async function getContentCreationOptions(nextPath = "/admin/content/new") {
+  await requireAdminSession(nextPath);
+
+  return safeQuery<
+    ResourceTaxonomyOptions & {
+      brandOptions: TaxonomyOption[];
+    }
+  >(
+    async () => {
+      const [taxonomy, brandOptions] = await Promise.all([
+        getTaxonomyOptions(["GENERAL", "CONTENT", "INDUSTRY"]),
+        getContentBrandOptions(),
+      ]);
+
+      return {
+        ...taxonomy,
+        brandOptions,
+      };
+    },
+    {
+      categoryOptions: [],
+      tagOptions: [],
+      brandOptions: [],
     },
   );
 }
@@ -240,8 +289,11 @@ export async function getBrandTaxonomyOptions() {
   );
 }
 
-export async function getContentList(query: ResourceListQuery) {
-  await requireAdminSession("/admin/content");
+export async function getContentList(
+  query: ResourceListQuery,
+  nextPath = "/admin/content",
+) {
+  await requireAdminSession(nextPath);
 
   return safeQuery<ContentListItem[]>(
     async () => {
@@ -249,6 +301,7 @@ export async function getContentList(query: ResourceListQuery) {
         where: {
           ...buildStatusFilter(query.status),
           ...(query.contentType ? { contentType: query.contentType } : {}),
+          ...(query.channelKey ? { channelKey: query.channelKey } : {}),
           ...buildContentSearchFilter(query.q),
         },
         orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
@@ -257,6 +310,7 @@ export async function getContentList(query: ResourceListQuery) {
           title: true,
           slug: true,
           contentType: true,
+          channelKey: true,
           workflowStatus: true,
           updatedAt: true,
           publishedAt: true,
@@ -279,6 +333,7 @@ export async function getContentList(query: ResourceListQuery) {
         title: item.title,
         slug: item.slug,
         contentType: item.contentType,
+        channelKey: item.channelKey,
         workflowStatus: item.workflowStatus,
         updatedAt: item.updatedAt,
         publishedAt: item.publishedAt,
@@ -286,7 +341,9 @@ export async function getContentList(query: ResourceListQuery) {
         tagNames: item.tags.map((tag) => tag.name),
         publicPath:
           item.workflowStatus === "PUBLISHED"
-            ? buildPublicPath("content", item.slug)
+            ? buildPublicPath("content", item.slug, {
+                channelKey: item.channelKey,
+              })
             : null,
         isSuspicious: Boolean(getSuspiciousPublishReason(item.title)),
       }));
@@ -407,12 +464,15 @@ export async function getBrandList(query: ResourceListQuery) {
   );
 }
 
-export async function getContentEditorData(id: string) {
-  await requireAdminSession(`/admin/content/${id}`);
+export async function getContentEditorData(
+  id: string,
+  nextPath = `/admin/content/${id}`,
+) {
+  await requireAdminSession(nextPath);
 
   return safeQuery<ContentEditorData | null>(
     async () => {
-      const [item, taxonomy] = await Promise.all([
+      const [item, taxonomy, brandOptions] = await Promise.all([
         prisma.content.findUnique({
           where: { id },
           select: {
@@ -420,8 +480,13 @@ export async function getContentEditorData(id: string) {
             title: true,
             slug: true,
             contentType: true,
+            channelKey: true,
             summary: true,
             body: true,
+            eventStartAt: true,
+            eventLocation: true,
+            eventKind: true,
+            referenceVersion: true,
             workflowStatus: true,
             publishedAt: true,
             categories: {
@@ -430,6 +495,11 @@ export async function getContentEditorData(id: string) {
               },
             },
             tags: {
+              select: {
+                id: true,
+              },
+            },
+            relatedBrands: {
               select: {
                 id: true,
               },
@@ -470,6 +540,7 @@ export async function getContentEditorData(id: string) {
           },
         }),
         getTaxonomyOptions(["GENERAL", "CONTENT", "INDUSTRY"]),
+        getContentBrandOptions(),
       ]);
 
       if (!item) {
@@ -482,11 +553,17 @@ export async function getContentEditorData(id: string) {
           title: item.title,
           slug: item.slug,
           contentType: item.contentType,
+          channelKey: item.channelKey,
           summary: item.summary ?? "",
           body: item.body ?? "",
           publishedAt: formatDateTimeLocalInput(item.publishedAt),
+          eventStartAt: formatDateTimeLocalInput(item.eventStartAt),
+          eventLocation: item.eventLocation ?? "",
+          eventKind: item.eventKind ?? "",
+          referenceVersion: item.referenceVersion ?? "",
           categoryIds: item.categories.map((category) => category.id),
           tagIds: item.tags.map((tag) => tag.id),
+          relatedBrandIds: item.relatedBrands.map((brand) => brand.id),
           workflowStatus: item.workflowStatus,
         },
         workflowHistory: item.workflows,
@@ -494,9 +571,12 @@ export async function getContentEditorData(id: string) {
         aiTasks: item.aiTasks,
         categoryOptions: taxonomy.categoryOptions,
         tagOptions: taxonomy.tagOptions,
+        brandOptions,
         publicPath:
           item.workflowStatus === "PUBLISHED"
-            ? buildPublicPath("content", item.slug)
+            ? buildPublicPath("content", item.slug, {
+                channelKey: item.channelKey,
+              })
             : null,
       };
     },

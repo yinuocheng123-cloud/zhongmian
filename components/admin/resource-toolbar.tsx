@@ -11,8 +11,8 @@ import Link from "next/link";
 import {
   contentTypeOptions,
   resourceLabels,
-  workflowFilterOptions,
   type ResourceKind,
+  workflowFilterOptions,
 } from "@/features/admin/resources/constants";
 
 type ResourceToolbarProps = {
@@ -20,6 +20,15 @@ type ResourceToolbarProps = {
   q?: string;
   status?: string;
   contentType?: string;
+  titleOverride?: string;
+  descriptionOverride?: string;
+  newHref?: string;
+  newLabel?: string;
+  contentTypeItems?: Array<{
+    value: string;
+    label: string;
+  }>;
+  hideContentTypeFilter?: boolean;
 };
 
 export function ResourceToolbar({
@@ -27,31 +36,41 @@ export function ResourceToolbar({
   q = "",
   status = "",
   contentType = "",
+  titleOverride,
+  descriptionOverride,
+  newHref,
+  newLabel,
+  contentTypeItems,
+  hideContentTypeFilter = false,
 }: ResourceToolbarProps) {
   const label = resourceLabels[resource];
+  const resolvedContentTypeItems = contentTypeItems ?? contentTypeOptions;
+  const shouldShowContentTypeFilter =
+    resource === "content" && !hideContentTypeFilter && resolvedContentTypeItems.length > 0;
 
   return (
     <div className="rounded-[28px] border border-line bg-surface-soft p-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
           <h2 className="font-serif text-2xl font-semibold text-foreground">
-            {label.plural}
+            {titleOverride ?? label.plural}
           </h2>
           <p className="text-sm leading-7 text-muted">
-            当前提供搜索、状态筛选和前台联动入口，后续继续承接更细的运营动作，但不把后台做成过重的通用 CMS。
+            {descriptionOverride ??
+              "当前提供搜索、状态筛选和前台联动入口，后续继续承接更细的运营动作，但不把后台做成过重的通用 CMS。"}
           </p>
         </div>
         <Link
-          href={label.newPath}
+          href={newHref ?? label.newPath}
           className="inline-flex h-11 items-center justify-center rounded-2xl bg-brand px-5 text-sm font-medium text-white transition hover:bg-brand-strong"
         >
-          新建{label.singular}
+          {newLabel ?? `新建${label.singular}`}
         </Link>
       </div>
 
       <form
         className={`mt-6 grid gap-4 ${
-          resource === "content"
+          shouldShowContentTypeFilter
             ? "lg:grid-cols-[1fr_200px_200px_120px]"
             : "lg:grid-cols-[1fr_220px_120px]"
         }`}
@@ -67,7 +86,7 @@ export function ResourceToolbar({
           />
         </label>
 
-        {resource === "content" ? (
+        {shouldShowContentTypeFilter ? (
           <label className="flex flex-col gap-2 text-sm text-foreground">
             <span>内容类型</span>
             <select
@@ -76,7 +95,7 @@ export function ResourceToolbar({
               className="h-11 rounded-2xl border border-line bg-white px-4 outline-none transition focus:border-brand"
             >
               <option value="">全部类型</option>
-              {contentTypeOptions.map((item) => (
+              {resolvedContentTypeItems.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
                 </option>

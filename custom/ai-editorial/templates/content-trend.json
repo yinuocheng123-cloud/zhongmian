@@ -1,0 +1,32 @@
+{
+  "id": "content-trend",
+  "name": "趋势解读模板",
+  "description": "面向行业趋势、变化解释与数据观察类内容的结构化模板，适合趋势解释和长期变化判断。",
+  "targetKind": "CONTENT",
+  "defaultTaskType": "FIRST_DRAFT",
+  "supportedTaskTypes": ["OUTLINE", "FIRST_DRAFT", "REWRITE", "SUMMARY"],
+  "supportedContentTypes": ["REPORT", "ARTICLE"],
+  "generationGoals": ["趋势解读", "行业观察", "结构判断"],
+  "promptRules": [
+    "优先解释长期变化、结构变化和关键驱动因素，避免退回普通新闻稿。",
+    "需要明确内容边界、观察口径和仍待补充的数据位置。",
+    "输出要服务行业入口判断，而不是只给出碎片结论。"
+  ],
+  "outputSections": [
+    {
+      "key": "signal",
+      "title": "核心信号",
+      "instruction": "先说明当前最值得关注的趋势变化和观察焦点。"
+    },
+    {
+      "key": "drivers",
+      "title": "驱动因素",
+      "instruction": "归纳趋势形成的主要原因、结构变化与影响因素。"
+    },
+    {
+      "key": "draft",
+      "title": "趋势解读占位稿",
+      "instruction": "输出一版可继续扩展的结构化正文草稿。"
+    }
+  ]
+}

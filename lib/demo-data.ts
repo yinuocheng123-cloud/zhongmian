@@ -182,6 +182,13 @@ export const brandEntries = [
 export const adminMenu = [
   { label: "控制台", href: "/admin" },
   { label: "内容管理", href: "/admin/content" },
+  { label: "行业趋势", href: "/admin/trends" },
+  { label: "行业事件", href: "/admin/events" },
+  { label: "品牌进展", href: "/admin/brand-progress" },
+  { label: "中眠榜", href: "/admin/rankings" },
+  { label: "中眠指数", href: "/admin/indexes" },
+  { label: "睡眠标准", href: "/admin/standards" },
+  { label: "中眠智库", href: "/admin/think-tank" },
   { label: "词条管理", href: "/admin/terms" },
   { label: "品牌管理", href: "/admin/brands" },
   { label: "AI 编辑部", href: "/admin/ai-editorial" },

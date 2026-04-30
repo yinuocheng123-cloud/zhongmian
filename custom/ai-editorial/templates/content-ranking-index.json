@@ -1,0 +1,32 @@
+{
+  "id": "content-ranking-index",
+  "name": "榜单与指数说明模板",
+  "description": "面向榜单、指数与评估说明类内容的结构化模板，适合解释口径、维度、样本与结论。",
+  "targetKind": "CONTENT",
+  "defaultTaskType": "FIRST_DRAFT",
+  "supportedTaskTypes": ["OUTLINE", "FIRST_DRAFT", "REWRITE", "SUMMARY"],
+  "supportedContentTypes": ["RANKING", "INDEX"],
+  "generationGoals": ["榜单说明", "指数说明", "方法说明"],
+  "promptRules": [
+    "优先解释评估维度、样本范围、排序或指数口径，避免只写成宣传文案。",
+    "需要明确哪些数据仍待补充，不能假装已经拥有完整统计图表。",
+    "输出要服务行业参考和方法理解，而不是普通资讯流。"
+  ],
+  "outputSections": [
+    {
+      "key": "method",
+      "title": "口径与方法",
+      "instruction": "先说明榜单或指数的对象、维度、样本与口径。"
+    },
+    {
+      "key": "observation",
+      "title": "关键观察",
+      "instruction": "归纳最值得对外解释的变化、排序或指数结论。"
+    },
+    {
+      "key": "draft",
+      "title": "说明性占位稿",
+      "instruction": "输出一版可继续扩展的说明正文，用于前台详情或后台编辑。"
+    }
+  ]
+}

@@ -9,7 +9,8 @@
  */
 
 import type { ResourceFormIntent } from "@/features/admin/resources/constants";
-import type { WorkflowStatus } from "@prisma/client";
+import type { SiteChannelKey, WorkflowStatus } from "@prisma/client";
+import { getContentPublicPath } from "@/lib/site-channels";
 
 export function slugify(raw: string) {
   return raw
@@ -134,13 +135,19 @@ export function parseAliases(value: string) {
 export function buildPublicPath(
   kind: "content" | "term" | "brand",
   slug: string,
+  options?: {
+    channelKey?: SiteChannelKey | null;
+  },
 ) {
   if (!slug) {
     return null;
   }
 
   if (kind === "content") {
-    return `/knowledge/${slug}`;
+    return getContentPublicPath({
+      slug,
+      channelKey: options?.channelKey,
+    });
   }
 
   if (kind === "term") {

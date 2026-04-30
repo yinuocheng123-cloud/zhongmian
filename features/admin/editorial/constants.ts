@@ -71,4 +71,7 @@ export const aiEditorialContentTypeOptions: Array<{
   { value: "GUIDE", label: "指南" },
   { value: "REPORT", label: "报告" },
   { value: "THINK_TANK", label: "智库内容" },
+  { value: "STANDARD", label: "标准说明" },
+  { value: "RANKING", label: "榜单说明" },
+  { value: "INDEX", label: "指数说明" },
 ];

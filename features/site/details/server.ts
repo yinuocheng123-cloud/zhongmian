@@ -1,17 +1,21 @@
 /**
  * 文件说明：该文件实现中眠网前台详情页所需的服务端查询能力。
- * 功能说明：统一封装 Content / Term / Brand 的已发布详情查询、关联信息查询与数据库不可用兜底。
+ * 功能说明：统一封装 Content / Term / Brand 的已发布详情查询、频道感知的内容详情、
+ * 关联内容查询与数据库不可用兜底。
  *
  * 结构概览：
- *   第一部分：共享类型与数据库兜底
+ *   第一部分：通用类型与兜底工具
  *   第二部分：Content 详情查询
- *   第三部分：Term 详情查询
- *   第四部分：Brand 详情查询
+ *   第三部分：Term / Brand 详情查询
  */
 
 import "server-only";
 
-import { WorkflowStatus, type Prisma } from "@prisma/client";
+import {
+  SiteChannelKey,
+  WorkflowStatus,
+  type Prisma,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 type DetailResult<T> = {
@@ -42,8 +46,13 @@ export type ContentDetail = {
   summary: string | null;
   body: string | null;
   contentType: string;
+  channelKey: SiteChannelKey;
   publishedAt: Date | null;
   updatedAt: Date;
+  eventStartAt: Date | null;
+  eventLocation: string | null;
+  eventKind: string | null;
+  referenceVersion: string | null;
   categories: TaxonomyItem[];
   tags: TaxonomyItem[];
   relatedTerms: Array<{
@@ -61,6 +70,7 @@ export type ContentDetail = {
     title: string;
     slug: string;
     summary: string | null;
+    channelKey: SiteChannelKey;
     publishedAt: Date | null;
   }>;
   seoTitle: string | null;
@@ -117,6 +127,7 @@ export type BrandDetail = {
     title: string;
     slug: string;
     summary: string | null;
+    channelKey: SiteChannelKey;
   }>;
   seoTitle: string | null;
   seoDescription: string | null;
@@ -183,146 +194,166 @@ function normalizeDetailSlug(slug: string) {
   try {
     return decodeURIComponent(trimmedSlug);
   } catch {
-    // 避免异常 slug 直接打断详情查询；解码失败时回退原值，仍交给查询层判断是否存在。
     return trimmedSlug;
   }
 }
 
-export async function getPublishedContentDetail(slug: string) {
-  return safeDetailQuery<ContentDetail>(async () => {
-    const normalizedSlug = normalizeDetailSlug(slug);
-    const item = await prisma.content.findFirst({
-      where: {
-        slug: normalizedSlug,
-        workflowStatus: WorkflowStatus.PUBLISHED,
+async function getPublishedContentDetailInternal(
+  slug: string,
+  channelKey?: SiteChannelKey,
+) {
+  const normalizedSlug = normalizeDetailSlug(slug);
+  const item = await prisma.content.findFirst({
+    where: {
+      slug: normalizedSlug,
+      workflowStatus: WorkflowStatus.PUBLISHED,
+      ...(channelKey ? { channelKey } : {}),
+    },
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      summary: true,
+      body: true,
+      contentType: true,
+      channelKey: true,
+      publishedAt: true,
+      updatedAt: true,
+      eventStartAt: true,
+      eventLocation: true,
+      eventKind: true,
+      referenceVersion: true,
+      seoTitle: true,
+      seoDescription: true,
+      categories: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
       },
-      select: {
-        id: true,
-        title: true,
-        slug: true,
-        summary: true,
-        body: true,
-        contentType: true,
-        publishedAt: true,
-        updatedAt: true,
-        seoTitle: true,
-        seoDescription: true,
-        categories: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
+      tags: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
         },
-        tags: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
+      },
+      relatedTerms: {
+        where: {
+          workflowStatus: WorkflowStatus.PUBLISHED,
         },
-        relatedTerms: {
-          where: {
-            workflowStatus: WorkflowStatus.PUBLISHED,
-          },
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-          take: 6,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
         },
-        relatedBrands: {
-          where: {
-            workflowStatus: WorkflowStatus.PUBLISHED,
-          },
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-          take: 6,
+        take: 6,
+      },
+      relatedBrands: {
+        where: {
+          workflowStatus: WorkflowStatus.PUBLISHED,
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+        },
+        take: 6,
+      },
+    },
+  });
+
+  if (!item) {
+    return null;
+  }
+
+  const categoryIds = item.categories.map((category) => category.id);
+  const tagIds = item.tags.map((tag) => tag.id);
+  const termIds = item.relatedTerms.map((term) => term.id);
+  const brandIds = item.relatedBrands.map((brand) => brand.id);
+  const relatedClauses: Prisma.ContentWhereInput[] = [];
+
+  if (categoryIds.length > 0) {
+    relatedClauses.push({
+      categories: {
+        some: {
+          id: { in: categoryIds },
         },
       },
     });
+  }
 
-    if (!item) {
-      return null;
-    }
-
-    const categoryIds = item.categories.map((category) => category.id);
-    const tagIds = item.tags.map((tag) => tag.id);
-    const termIds = item.relatedTerms.map((term) => term.id);
-    const brandIds = item.relatedBrands.map((brand) => brand.id);
-    const relatedClauses: Prisma.ContentWhereInput[] = [];
-
-    if (categoryIds.length > 0) {
-      relatedClauses.push({
-        categories: {
-          some: {
-            id: { in: categoryIds },
-          },
+  if (tagIds.length > 0) {
+    relatedClauses.push({
+      tags: {
+        some: {
+          id: { in: tagIds },
         },
-      });
-    }
+      },
+    });
+  }
 
-    if (tagIds.length > 0) {
-      relatedClauses.push({
-        tags: {
-          some: {
-            id: { in: tagIds },
-          },
+  if (termIds.length > 0) {
+    relatedClauses.push({
+      relatedTerms: {
+        some: {
+          id: { in: termIds },
         },
-      });
-    }
+      },
+    });
+  }
 
-    if (termIds.length > 0) {
-      relatedClauses.push({
-        relatedTerms: {
-          some: {
-            id: { in: termIds },
-          },
+  if (brandIds.length > 0) {
+    relatedClauses.push({
+      relatedBrands: {
+        some: {
+          id: { in: brandIds },
         },
-      });
-    }
+      },
+    });
+  }
 
-    if (brandIds.length > 0) {
-      relatedClauses.push({
-        relatedBrands: {
-          some: {
-            id: { in: brandIds },
+  const relatedContents =
+    relatedClauses.length > 0
+      ? await prisma.content.findMany({
+          where: {
+            id: { not: item.id },
+            workflowStatus: WorkflowStatus.PUBLISHED,
+            OR: relatedClauses,
           },
-        },
-      });
-    }
+          orderBy: [{ isFeatured: "desc" }, ...buildPublishedOrder()],
+          take: 3,
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            summary: true,
+            channelKey: true,
+            publishedAt: true,
+          },
+        })
+      : [];
 
-    const relatedContents =
-      relatedClauses.length > 0
-        ? await prisma.content.findMany({
-            where: {
-              id: { not: item.id },
-              workflowStatus: WorkflowStatus.PUBLISHED,
-              OR: relatedClauses,
-            },
-            orderBy: [{ isFeatured: "desc" }, ...buildPublishedOrder()],
-            take: 3,
-            select: {
-              id: true,
-              title: true,
-              slug: true,
-              summary: true,
-              publishedAt: true,
-            },
-          })
-        : [];
+  return {
+    ...item,
+    categories: stripTaxonomyIds(item.categories),
+    tags: stripTaxonomyIds(item.tags),
+    relatedContents,
+  } satisfies ContentDetail;
+}
 
-    return {
-      ...item,
-      categories: stripTaxonomyIds(item.categories),
-      tags: stripTaxonomyIds(item.tags),
-      relatedContents,
-    };
-  });
+export async function getPublishedContentDetail(slug: string) {
+  return safeDetailQuery<ContentDetail>(() => getPublishedContentDetailInternal(slug));
+}
+
+export async function getPublishedChannelContentDetail(
+  channelKey: SiteChannelKey,
+  slug: string,
+) {
+  return safeDetailQuery<ContentDetail>(() =>
+    getPublishedContentDetailInternal(slug, channelKey),
+  );
 }
 
 export async function getPublishedTermDetail(slug: string) {
@@ -581,6 +612,7 @@ export async function getPublishedBrandDetail(slug: string) {
         title: true,
         slug: true,
         summary: true,
+        channelKey: true,
       },
     });
 

@@ -1,13 +1,19 @@
 /**
  * 文件说明：该文件定义后台资源管理模块的共享常量。
- * 功能说明：统一资源名称、状态标签、表单动作和内容类型选项，避免各页面分别维护一套配置。
+ * 功能说明：统一资源名称、状态标签、表单动作、内容类型与栏目频道选项，避免各页面分别维护配置。
  *
  * 结构概览：
  *   第一部分：资源与状态常量
- *   第二部分：内容类型与筛选配置
+ *   第二部分：内容类型与栏目频道常量
+ *   第三部分：筛选与动作文案
  */
 
-import type { ContentType, WorkflowStatus } from "@prisma/client";
+import type {
+  ContentType,
+  SiteChannelKey,
+  WorkflowStatus,
+} from "@prisma/client";
+import { managedContentChannelConfigs } from "@/lib/site-channels";
 
 export type ResourceKind = "content" | "term" | "brand";
 export type ResourceFormIntent =
@@ -75,6 +81,17 @@ export const contentTypeOptions: Array<{
   { value: "STANDARD", label: "标准" },
   { value: "RANKING", label: "榜单" },
   { value: "INDEX", label: "指数" },
+];
+
+export const siteChannelOptions: Array<{
+  value: SiteChannelKey;
+  label: string;
+}> = [
+  { value: "KNOWLEDGE", label: "睡眠知识" },
+  ...managedContentChannelConfigs.map((item) => ({
+    value: item.channelKey,
+    label: item.title,
+  })),
 ];
 
 export const workflowFilterOptions: Array<{

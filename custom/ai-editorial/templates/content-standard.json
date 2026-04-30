@@ -1,0 +1,32 @@
+{
+  "id": "content-standard",
+  "name": "标准说明模板",
+  "description": "面向睡眠标准、适用范围与核心条目说明的结构化模板，适合标准解释与参考说明内容。",
+  "targetKind": "CONTENT",
+  "defaultTaskType": "FIRST_DRAFT",
+  "supportedTaskTypes": ["OUTLINE", "FIRST_DRAFT", "REWRITE", "SUMMARY"],
+  "supportedContentTypes": ["STANDARD"],
+  "generationGoals": ["标准说明", "适用范围", "核心条目"],
+  "promptRules": [
+    "优先说明标准适用范围、版本号和核心条目，避免退回普通文章表达。",
+    "对无法确认的条目要保留待补充位置，不能假装完整标准文本。",
+    "保持专业、克制、可被行业参考的写法。"
+  ],
+  "outputSections": [
+    {
+      "key": "scope",
+      "title": "适用范围",
+      "instruction": "说明该标准面向的对象、场景和使用边界。"
+    },
+    {
+      "key": "items",
+      "title": "核心条目",
+      "instruction": "列出需要重点说明的核心条目和解释方向。"
+    },
+    {
+      "key": "draft",
+      "title": "标准说明占位稿",
+      "instruction": "输出一版可继续编辑的结构化标准说明正文。"
+    }
+  ]
+}

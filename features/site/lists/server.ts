@@ -1,12 +1,12 @@
 /**
- * 文件说明：该文件实现中眠网前台栏目页所需的服务端列表查询能力。
- * 功能说明：统一封装 /knowledge、/terms、/brands 三条主线路的已发布列表查询、最小搜索、分类筛选、标签筛选与分页。
+ * 文件说明：该文件实现中眠网前台栏目列表所需的服务端查询能力。
+ * 功能说明：统一封装 /knowledge、/terms、/brands 以及预留扩展栏目的已发布列表查询、
+ * 最小搜索、分类标签筛选与分页逻辑。
  *
  * 结构概览：
- *   第一部分：共享类型、分页结构与数据库兜底
- *   第二部分：知识内容列表查询
- *   第三部分：词条列表查询
- *   第四部分：品牌列表查询
+ *   第一部分：通用类型、兜底与分页工具
+ *   第二部分：Content 频道列表查询
+ *   第三部分：Term / Brand 列表查询
  */
 
 import "server-only";
@@ -14,6 +14,7 @@ import "server-only";
 import {
   CategoryScope,
   ContentType,
+  SiteChannelKey,
   WorkflowStatus,
   type Prisma,
 } from "@prisma/client";
@@ -51,10 +52,20 @@ export type KnowledgeListItem = {
   slug: string;
   summary: string | null;
   contentType: ContentType;
+  channelKey: SiteChannelKey;
   publishedAt: Date | null;
   updatedAt: Date;
+  eventStartAt: Date | null;
+  eventLocation: string | null;
+  eventKind: string | null;
+  referenceVersion: string | null;
   categories: TaxonomyItem[];
   tags: TaxonomyItem[];
+  relatedBrands: Array<{
+    id: string;
+    name: string;
+    slug: string;
+  }>;
 };
 
 export type TermListItem = {
@@ -123,6 +134,13 @@ export type BrandsListData = {
   activeCategory: string;
   activeTag: string;
   pagination: PaginationState;
+};
+
+export type ChannelContentListData = KnowledgeListData;
+
+type ContentChannelListOptions = {
+  channelKey: SiteChannelKey;
+  contentTypes?: ContentType[];
 };
 
 const knowledgeTypes: ContentType[] = [
@@ -198,22 +216,34 @@ function buildPagination(total: number, page: number, pageSize: number): Paginat
   };
 }
 
-function buildKnowledgeWhere(input: {
-  query: string;
-  category: string;
-  tag: string;
-}): Prisma.ContentWhereInput {
+function buildContentWhere(
+  input: {
+    query: string;
+    category: string;
+    tag: string;
+  },
+  options: ContentChannelListOptions,
+): Prisma.ContentWhereInput {
   return {
     workflowStatus: WorkflowStatus.PUBLISHED,
-    contentType: {
-      in: knowledgeTypes,
-    },
+    channelKey: options.channelKey,
+    ...(options.contentTypes?.length
+      ? {
+          contentType: {
+            in: options.contentTypes,
+          },
+        }
+      : {}),
     ...(input.query
       ? {
           OR: [
             { title: buildContains(input.query) },
             { slug: buildContains(input.query) },
             { summary: buildContains(input.query) },
+            { body: buildContains(input.query) },
+            { eventLocation: buildContains(input.query) },
+            { eventKind: buildContains(input.query) },
+            { relatedBrands: { some: { name: buildContains(input.query) } } },
           ],
         }
       : {}),
@@ -316,14 +346,17 @@ function buildBrandWhere(input: {
   };
 }
 
-export async function getPublishedKnowledgeList(input: QueryInput) {
+async function getPublishedContentListByChannel(
+  input: QueryInput,
+  options: ContentChannelListOptions,
+) {
   const query = normalizeQuery(input.q);
   const activeCategory = normalizeQuery(input.category);
   const activeTag = normalizeQuery(input.tag);
   const pageSize = input.take ?? 9;
   const requestedPage = normalizePage(input.page);
 
-  return safeQuery<KnowledgeListData>(
+  return safeQuery<ChannelContentListData>(
     {
       items: [],
       categories: [],
@@ -334,23 +367,31 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
       pagination: buildPagination(0, 1, pageSize),
     },
     async () => {
-      const where = buildKnowledgeWhere({
-        query,
-        category: activeCategory,
-        tag: activeTag,
-      });
+      const where = buildContentWhere(
+        {
+          query,
+          category: activeCategory,
+          tag: activeTag,
+        },
+        options,
+      );
 
       const [total, categories, tags] = await Promise.all([
         prisma.content.count({ where }),
         prisma.category.findMany({
           where: {
-            scope: CategoryScope.CONTENT,
+            scope: { in: [CategoryScope.CONTENT, CategoryScope.INDUSTRY, CategoryScope.GENERAL] },
             contents: {
               some: {
                 workflowStatus: WorkflowStatus.PUBLISHED,
-                contentType: {
-                  in: knowledgeTypes,
-                },
+                channelKey: options.channelKey,
+                ...(options.contentTypes?.length
+                  ? {
+                      contentType: {
+                        in: options.contentTypes,
+                      },
+                    }
+                  : {}),
               },
             },
           },
@@ -364,9 +405,14 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
                 contents: {
                   where: {
                     workflowStatus: WorkflowStatus.PUBLISHED,
-                    contentType: {
-                      in: knowledgeTypes,
-                    },
+                    channelKey: options.channelKey,
+                    ...(options.contentTypes?.length
+                      ? {
+                          contentType: {
+                            in: options.contentTypes,
+                          },
+                        }
+                      : {}),
                   },
                 },
               },
@@ -378,9 +424,14 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
             contents: {
               some: {
                 workflowStatus: WorkflowStatus.PUBLISHED,
-                contentType: {
-                  in: knowledgeTypes,
-                },
+                channelKey: options.channelKey,
+                ...(options.contentTypes?.length
+                  ? {
+                      contentType: {
+                        in: options.contentTypes,
+                      },
+                    }
+                  : {}),
               },
             },
           },
@@ -394,15 +445,20 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
                 contents: {
                   where: {
                     workflowStatus: WorkflowStatus.PUBLISHED,
-                    contentType: {
-                      in: knowledgeTypes,
-                    },
+                    channelKey: options.channelKey,
+                    ...(options.contentTypes?.length
+                      ? {
+                          contentType: {
+                            in: options.contentTypes,
+                          },
+                        }
+                      : {}),
                   },
                 },
               },
             },
           },
-          take: 12,
+          take: 14,
         }),
       ]);
 
@@ -418,8 +474,13 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
           slug: true,
           summary: true,
           contentType: true,
+          channelKey: true,
           publishedAt: true,
           updatedAt: true,
+          eventStartAt: true,
+          eventLocation: true,
+          eventKind: true,
+          referenceVersion: true,
           categories: {
             select: {
               name: true,
@@ -431,6 +492,17 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
               name: true,
               slug: true,
             },
+          },
+          relatedBrands: {
+            where: {
+              workflowStatus: WorkflowStatus.PUBLISHED,
+            },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+            take: 3,
           },
         },
       });
@@ -456,6 +528,20 @@ export async function getPublishedKnowledgeList(input: QueryInput) {
       };
     },
   );
+}
+
+export async function getPublishedKnowledgeList(input: QueryInput) {
+  return getPublishedContentListByChannel(input, {
+    channelKey: "KNOWLEDGE",
+    contentTypes: knowledgeTypes,
+  });
+}
+
+export async function getPublishedChannelContentList(
+  input: QueryInput,
+  options: ContentChannelListOptions,
+) {
+  return getPublishedContentListByChannel(input, options);
 }
 
 export async function getPublishedTermsList(input: QueryInput) {

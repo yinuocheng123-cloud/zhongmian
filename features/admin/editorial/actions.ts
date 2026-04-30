@@ -13,6 +13,7 @@
 import {
   AiTaskType,
   ContentType,
+  SiteChannelKey,
   WorkflowStatus,
   type AiTaskStatus,
   type Prisma,
@@ -96,6 +97,23 @@ function resolveNextAiTaskStatus(
   }
 
   return "SUCCEEDED";
+}
+
+function resolveChannelKeyForDraft(contentType: ContentType): SiteChannelKey {
+  switch (contentType) {
+    case "THINK_TANK":
+      return "THINK_TANK";
+    case "STANDARD":
+      return "STANDARDS";
+    case "RANKING":
+      return "RANKINGS";
+    case "INDEX":
+      return "INDEXES";
+    case "REPORT":
+      return "TRENDS";
+    default:
+      return "KNOWLEDGE";
+  }
 }
 
 async function ensureUniqueContentSlug(
@@ -249,6 +267,7 @@ async function resolveLinkedContent(
       title: params.title,
       slug,
       contentType: params.contentType,
+      channelKey: resolveChannelKeyForDraft(params.contentType),
       summary: params.topic,
       body: params.placeholderOutput,
       workflowStatus: "DRAFT",

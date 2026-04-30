@@ -28,6 +28,17 @@ enum ContentType {
   INDEX
 }
 
+enum SiteChannelKey {
+  KNOWLEDGE
+  TRENDS
+  EVENTS
+  BRAND_PROGRESS
+  RANKINGS
+  INDEXES
+  STANDARDS
+  THINK_TANK
+}
+
 enum WorkflowStatus {
   DRAFT
   PENDING_EDIT
@@ -71,6 +82,7 @@ model Content {
   title          String
   slug           String         @unique
   contentType    ContentType
+  channelKey     SiteChannelKey @default(KNOWLEDGE)
   summary        String?
   body           String?
   bodyJson       Json?
@@ -78,6 +90,10 @@ model Content {
   sourceName     String?
   sourceUrl      String?
   authorName     String?
+  eventStartAt   DateTime?
+  eventLocation  String?
+  eventKind      String?
+  referenceVersion String?
   seoTitle       String?
   seoDescription String?
   seoKeywords    String[]
@@ -99,6 +115,7 @@ model Content {
   aiTasks       AiTask[]
 
   @@index([contentType, workflowStatus, publishedAt])
+  @@index([channelKey, workflowStatus, publishedAt])
   @@index([isFeatured, publishedAt])
   @@index([createdAt])
 }
